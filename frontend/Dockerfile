@@ -12,7 +12,7 @@ RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
-LABEL org.opencontainers.image.version="v0.33.0" \
+LABEL org.opencontainers.image.version="v0.33.1" \
       org.opencontainers.image.description="frontend: runtime BRANDING toggle (kvmaestro debranded default / kvmaestro internal) via env.js; brand-driven name, logo, favicon, title; test-env red overlay kept independent."
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -4,7 +4,7 @@
 
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.version="v0.33.0" \
+LABEL org.opencontainers.image.version="v0.33.1" \
       org.opencontainers.image.description="console-proxy unchanged; version bump to keep image labels aligned with fleet v0.32.0."
 
 WORKDIR /app

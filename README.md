@@ -498,6 +498,7 @@ architecture and its troubleshooting table.
 
 | Version | Changes |
 |---|---|
+| v0.33.1 | Dependency security patch — cryptography 44→50, Flask-Cors 5→6, marshmallow 3.23→3.26, requests 2.32→2.33, asyncssh 2.19→2.24, axios →1.20. Clears the bulk of reported CVEs; two advisories documented as accepted/deferred in [`SECURITY-NOTES.md`](SECURITY-NOTES.md). No functional changes |
 | v0.33.0 | Offline-migration CPU-feature fix (stopped-VM migration across hosts with differing CPU features no longer fails on e.g. `missing features: MPX`); hard-stop/force-off action for running VMs; VM detail-page power actions bar; runtime BRANDING toggle (debranded KVMaestro vs. custom branding) |
 | v0.32.0 | Open-source auth: bootstrap admin account + DB-configured LDAP (admin Users tab); VM column picker; VM detail page |
 | v0.30.0 | VM Lifecycle / 1-year TTL — per-VM term with owner + tenant-group warnings, one-click renew, restart-block at expiry, and an Ops delete request (never auto-deletes); admin exempt + runtime on/off |
