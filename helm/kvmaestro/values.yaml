@@ -1,0 +1,151 @@
+# Default values for kvmaestro
+
+# Optional registry pull secrets (list of { name: <secret> }). Empty by default
+# because prod pulls via node-level docker creds; a fresh namespace (e.g.
+# a fresh namespace) needs its registry pull secret referenced here.
+imagePullSecrets: []
+
+replicaCount:
+  api: 2
+  worker: 2
+  beat: 1
+  consoleProxy: 2
+  ui: 2
+
+image:
+  api:
+    repository: kvmaestro/api
+    tag: latest
+    pullPolicy: IfNotPresent
+  consoleProxy:
+    repository: kvmaestro/console-proxy
+    tag: latest
+    pullPolicy: IfNotPresent
+  ui:
+    repository: kvmaestro/ui
+    tag: latest
+    pullPolicy: IfNotPresent
+
+# Istio ingress (Gateway + VirtualService). The chart no longer ships an
+# nginx-Ingress resource — the target cluster is Istio-only. TLS secret is
+# read via SDS from the istio-system namespace (same namespace as the
+# ingress-gateway pod), NOT from this application namespace.
+istio:
+  enabled: true
+  # Label used to select the ingress-gateway pod. Default rke2/Istio install
+  # labels the shared gateway pod with `istio: ingressgateway`.
+  gatewaySelector: ingressgateway
+  host: kvmaestro.example.com
+  # 80 → 443 permanent redirect handled by Envoy on the gateway.
+  # Set to false if you need a plain-HTTP smoke-test window.
+  httpRedirect: true
+  tls:
+    enabled: true
+    # Secret MUST live in the istio-system namespace, not here.
+    secretName: kvmaestro-tls
+  # Route timeouts. API long-poll and console WebSocket both need generous
+  # values; the API default matches long-running libvirt operations.
+  apiTimeout: 3600s
+  consoleTimeout: 3600s
+
+config:
+  # UI brand preset written into the runtime env.js by the UI entrypoint:
+  #   "kvmaestro"      -> default, debranded open-source build (KVMaestro)
+  #   "custom"    -> example white-label build (your name + logo)
+  BRANDING: "kvmaestro"
+  JWT_ACCESS_TOKEN_EXPIRES: "900"
+  JWT_REFRESH_TOKEN_EXPIRES: "604800"
+  # LDAP below is now only a one-time SEED. On first migrate these are copied
+  # into the app_settings DB table; after that LDAP is configured from the
+  # admin UI (Users tab) with no redeploy. Safe to leave blank on a fresh
+  # install and configure everything in the UI as the bootstrap admin.
+  LDAP_ENABLED: "true"
+  LDAP_URI: "ldaps://ldap.example.com:636"
+  LDAP_BASE_DN: "dc=example,dc=com"
+  LDAP_USER_FILTER: "(uid={username})"
+  LDAP_GROUP_BASE_DN: "ou=groups,dc=example,dc=com"
+  LDAP_ADMIN_GROUP: "kvm-admins"
+  HEARTBEAT_INTERVAL: "10"
+  NODE_SUSPECT_THRESHOLD: "30"
+  NODE_DOWN_THRESHOLD: "60"
+
+secrets:
+  FLASK_SECRET_KEY: ""
+  DATABASE_URL: "mysql+pymysql://kvmaestro:changeme@mysql:3306/kvmaestro"
+  REDIS_URL: "redis://redis:6379/0"
+  JWT_SECRET_KEY: ""
+  # LDAP bind creds below are seed-only (see config note above). Once set in
+  # the UI they live encrypted in the DB; the bind password is sealed with a
+  # key derived from FLASK_SECRET_KEY.
+  LDAP_BIND_DN: ""
+  LDAP_BIND_PASSWORD: ""
+  AGENT_SHARED_KEY: ""
+  # See values.example.yaml — must match the self-service MCP sidecar env
+  # `MCP_SHARED_SECRET`. Leave empty in the base template; set per-env.
+  MCP_SHARED_SECRET: ""
+
+# Bootstrap / break-glass admin (username "admin", always is_admin, bypasses
+# LDAP). Its password is NOT managed by this chart — it is read from an
+# EXTERNALLY-MANAGED Kubernetes Secret you create out-of-band, so it survives
+# every `helm upgrade` and its value never lives in helm state, values files,
+# or the repo. Leave enabled=false to DISABLE the account entirely.
+#
+# To enable, create the secret once, then set enabled=true:
+#   kubectl -n <ns> create secret generic wvc-admin-bootstrap \
+#     --from-literal=ADMIN_PASSWORD='<strong-password>'
+adminBootstrap:
+  enabled: false
+  # Name of the pre-existing Secret holding the admin password.
+  secretName: wvc-admin-bootstrap
+  # Key within that Secret.
+  secretKey: ADMIN_PASSWORD
+
+mysql:
+  enabled: true
+  storage: 20Gi
+  storageClass: ""
+
+redis:
+  enabled: true
+  storage: 5Gi
+  storageClass: ""
+
+hpa:
+  api:
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPU: 70
+  worker:
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPU: 80
+
+resources:
+  api:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  worker:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  consoleProxy:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  ui:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

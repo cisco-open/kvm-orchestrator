@@ -1,0 +1,87 @@
+# Prometheus scrape config for the kvmaestro controller.
+#
+# There are two deployment shapes and the scrape story is different for each.
+# The canonical Prometheus is the one running in the rke2-k8s cluster at
+# `monitoring-scrape/prometheus-deployment` (config in ConfigMap
+# `prometheus-server-conf`, key `prometheus.yml`), scraping via the pod running
+# inside the cluster.
+#
+# =============================================================================
+# 1. Docker sandbox (dev.example.com)
+# =============================================================================
+# The docker stack listens on the host directly at :8000, reachable from any
+# lab-network host — including the in-cluster Prometheus (which egresses via
+# the cluster CNI to the lab subnet). Add the static_config below to the
+# `scrape_configs:` list of `monitoring-scrape/prometheus-server-conf` and
+# reload:
+#
+#   kubectl -n monitoring-scrape edit cm prometheus-server-conf
+#   kubectl -n monitoring-scrape rollout restart deploy/prometheus-deployment
+#
+# Verify at http://<port-forward-to-9090>/targets — job should be UP.
+#
+# Notes:
+# - Scrape interval matches the Grafana dashboard's 5m rate() windows
+#   (any interval between 10s and 60s works; 15s is Prometheus default).
+# - The endpoint is unauthenticated by design — protect it at the network
+#   layer (only monitoring subnets should reach dev-host:8000).
+
+- job_name: kvmaestro-docker-sandbox
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  metrics_path: /metrics
+  scheme: http
+  static_configs:
+    - targets:
+        - dev.example.com:8000
+      labels:
+        env: sandbox
+        component: controller
+
+# =============================================================================
+# 2. k8s cluster (kvmaestro.example.com, rke2-k8s)
+# =============================================================================
+# NO scrape_configs edit needed.
+#
+# The in-cluster Prometheus already ships a generic `kubernetes-pods` scrape
+# job that auto-discovers any pod annotated with `prometheus.io/scrape=true`.
+# The v0.22 chart adds those annotations to the api Deployment pod template
+# (see `helm/kvmaestro/templates/api-deployment.yaml`):
+#
+#   annotations:
+#     prometheus.io/scrape: "true"
+#     prometheus.io/port:   "8000"
+#     prometheus.io/path:   "/metrics"
+#
+# Every api pod (currently 2 replicas) becomes its own scrape
+# target. Per-pod scraping is REQUIRED here because prometheus_client's
+# multiprocess mode aggregates gunicorn workers into a per-pod tmpfs
+# (PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc); pod-level counters
+# do NOT compose across replicas. Service-level scraping would bounce between
+# the two pods and produce counter regressions every other scrape.
+#
+# The `kubernetes-pods` relabel_configs rewrite `__address__` to
+# `<pod-ip>:8000`, so the target list becomes e.g.:
+#   10.42.4.137:8000  (pod kvmaestro-kvmaestro-api-XXXX)
+#   10.42.5.96:8000   (pod kvmaestro-kvmaestro-api-YYYY)
+#
+# Labels applied automatically by the existing job:
+#   - `kubernetes_namespace=kvmaestro`
+#   - `kubernetes_pod_name=<pod>`
+#   - all `app.kubernetes.io/*` labels via `labelmap` (component=api,
+#     name=kvmaestro, etc.)
+#
+# Verify (from inside the cluster):
+#   kubectl -n monitoring-scrape port-forward svc/prometheus-deployment 9090
+#   open http://localhost:9090/targets — look for the two api pod IPs under
+#   the `kubernetes-pods` job in state=up.
+#
+# Or PromQL:
+#   up{app_kubernetes_io_component="api", kubernetes_namespace="kvmaestro"}
+#
+# If you ever want to scrape from an off-cluster Prometheus instead, you'll
+# need to (a) route `/metrics` through the Istio VirtualService (currently
+# only `/api`, `/healthz`, `/console-ws`, `/` are routed — `/metrics` would
+# fall through to the SPA nginx and silently return index.html), and (b)
+# add an AuthorizationPolicy restricting it to the Prometheus source IP.
+# Not recommended — you also lose per-pod scraping through the Service.

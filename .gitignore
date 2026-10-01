@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+frontend/dist/
+frontend/build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage & Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Alembic
+controller/migrations/versions/__pycache__/
+
+# Helm
+helm/kvmaestro/charts/
+
+# SSH private keys
+keys/kvmaestro
+
+# TLS certs, keys, CSRs — never commit private material,
+# and the public cert lives in the istio-system Secret, not the repo.
+*.key
+*.cer
+*.crt
+*.pem
+*.csr
+*.p12
+*.pfx
+
+# Misc
+*.log
+*.pid

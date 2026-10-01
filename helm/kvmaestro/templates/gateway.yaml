@@ -1,0 +1,51 @@
+{{- if .Values.istio.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ include "kvmaestro.fullname" . }}
+  labels:
+    {{- include "kvmaestro.labels" . | nindent 4 }}
+spec:
+  # Selects the shared Istio ingress-gateway pod in istio-system.
+  # Standard rke2/Istio installation labels this pod `istio: ingressgateway`.
+  selector:
+    istio: {{ .Values.istio.gatewaySelector | default "ingressgateway" }}
+  servers:
+    {{- if .Values.istio.httpRedirect }}
+    # Plain HTTP → 301 redirect to HTTPS. Envoy on the ingress gateway
+    # handles the redirect internally; no backend hit.
+    - port:
+        number: 80
+        name: http-redirect
+        protocol: HTTP
+      hosts:
+        - {{ .Values.istio.host | quote }}
+      tls:
+        httpsRedirect: true
+    {{- end }}
+    {{- if .Values.istio.tls.enabled }}
+    # HTTPS terminated at the ingress gateway. The credential lives in the
+    # istio-system namespace (same namespace as the ingress-gateway pod) and
+    # is loaded via SDS — that's why the secret was placed there and NOT in
+    # this application namespace.
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        credentialName: {{ .Values.istio.tls.secretName | quote }}
+      hosts:
+        - {{ .Values.istio.host | quote }}
+    {{- else }}
+    # TLS disabled: expose HTTPS-less HTTP on 80 for the smoke-test phase.
+    # DO NOT run production in this mode — LDAP passwords cross the wire
+    # in plaintext.
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - {{ .Values.istio.host | quote }}
+    {{- end }}
+{{- end }}

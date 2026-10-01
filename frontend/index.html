@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/kvmaestro.svg" id="favicon" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KVMaestro</title>
+    <!-- Runtime config, written by the UI container entrypoint from the
+         ENVIRONMENT + BRANDING pod env vars. Loaded before the bundle so the
+         same image renders as the default KVMaestro build or the internal
+         white-labelled build, live (blue) or test (red). No-store so a redeploy
+         into a different namespace always re-reads it. The bundle then sets the
+         document title + favicon from the active brand (see applyBrandChrome). -->
+    <script src="/env.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

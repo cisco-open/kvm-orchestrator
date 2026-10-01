@@ -1,0 +1,2 @@
+export const VERSION = "v0.33.0";
+export const RELEASE_NOTE = "New admin-only Users tab: configure LDAP/Active Directory (server, base-user and admin-group settings) directly in the UI — changes apply with no redeploy. A built-in 'admin' account (set via ADMIN_PASSWORD) always works even when LDAP is down, so you can set everything up on a fresh install. The LDAP bind password is write-only and stored encrypted.";

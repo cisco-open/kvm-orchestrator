@@ -1,0 +1,199 @@
+// kvmaestro K8s MySQL backup pipeline
+//
+// Dumps the `kvmaestro` database out of the MySQL StatefulSet running in
+// the `kvmaestro` namespace on rke2-k8s, then ships the SQL file to
+// backup.example.com for offsite retention. Runs nightly at 02:00 UK.
+//
+// Modelled on self-service/database/Jenkinsfile.backup-db (Jenkins job
+// `k8s-mysqldump-pipeline`), which has been backing up self-service's MySQL
+// against the same cluster from the same Jenkins server for years — same
+// three-stage shape, same credentials plugin, same scp target host.
+//
+// Deltas from the self-service pipeline:
+//   - Namespace / statefulset / database name are wvc-specific.
+//   - Exec target is a StatefulSet reference (survives pod restarts) rather
+//     than a hard-coded pod name.
+//   - Dump filename carries a UTC timestamp so history is retained on
+//     your-backup-host (self-service overwrites `self-service-mysql.sql` each run,
+//     losing point-in-time recovery capability).
+//   - Full mysqldump flag set matches the canonical command in
+//     helm/kvmaestro/DEPLOY.md §2: `--single-transaction` for a
+//     non-locking consistent snapshot, `--set-gtid-purged=OFF` so the dump
+//     can replay on any server (GTID or not), `--default-character-set=utf8mb4`
+//     to preserve the DB's real charset, `--routines --events` so stored
+//     procs and scheduled events come across.
+//   - Destination is a wvc-specific subdirectory so the two apps don't
+//     interleave files.
+//
+// Retention: not enforced yet. Follow-up work item — sweep files older than
+// 30 days on your-backup-host after the file count starts to hurt.
+//
+// Environment assumptions (match jenkins.example.com as of 2026-07-02):
+//   - Only agent is the Jenkins built-in node. `agent any` binds there.
+//   - The agent's default kubectl config resolves to the rke2-k8s cluster
+//     (same assumption self-service's k8s-mysqldump-pipeline has been making
+//     since 2023). No explicit kubeconfig credential is needed.
+//   - The `wvc_mysql_password` credential holds the MySQL root password.
+//     Rotated 2026-07-02; `values/values.example.yaml`'s `mysql.rootPassword`
+//     must stay in sync so a chart re-install initialises MySQL with the
+//     same password the pipeline expects to see.
+//   - `jenkins_SSH_key` is the SSH private key for `root@backup.example.com`.
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    triggers {
+        // 02:00 UK, every day. `H` deliberately not used — self-service's
+        // pipeline uses a fixed 02:00 slot too, and the two runs sequenced
+        // on the same server keep the I/O window tight and predictable.
+        cron('0 2 * * *')
+    }
+
+    environment {
+        K8S_NAMESPACE = 'kvmaestro'
+        MYSQL_STS     = 'statefulset/kvmaestro-kvmaestro-mysql'
+        DB_NAME       = 'kvmaestro'
+        BACKUP_HOST   = 'backup.example.com'
+        BACKUP_USER   = 'root'
+        BACKUP_DIR    = '/data/shared/LabOPS/backup/kvmaestro'
+    }
+
+    stages {
+
+        // -----------------------------------------------------------------
+        // 1. Install kubectl
+        //
+        // Mirrors self-service's k8s-mysqldump-pipeline — re-fetch the
+        // stable kubectl binary each build so the pipeline is portable
+        // across agents that may or may not have kubectl preinstalled.
+        // Small (~50MB curl) and only runs once per day.
+        // -----------------------------------------------------------------
+        stage('Install kubectl') {
+            steps {
+                sh '''
+                    set -eu
+                    curl -sSLO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
+                    chmod +x ./kubectl
+                    sudo mv ./kubectl /usr/local/bin/kubectl
+                    kubectl version --client=true
+                '''
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 2. Dump the K8s MySQL
+        //
+        // Exec into the mysql StatefulSet pod and stream mysqldump to a
+        // local file in the Jenkins workspace. Using the StatefulSet name
+        // means kubectl picks a healthy pod even if `-0` has restarted —
+        // the ordinal-suffix pattern the self-service pipeline uses hard-
+        // codes a specific pod which can time out during a rollout.
+        //
+        // The full flag set matches DEPLOY.md's canonical mysqldump. Two
+        // production-safety flags matter here:
+        //   --single-transaction   : snapshot without table locks, so the
+        //                            running API keeps serving reads/writes
+        //                            through the dump window.
+        //   --set-gtid-purged=OFF  : keep GTID metadata out of the dump so
+        //                            restore replay isn't tied to a
+        //                            specific server_id / GTID history.
+        //
+        // The password crosses the wire as a `-p<pw>` argument inside the
+        // pod so `ps` on the k8s node can see it during the dump. That's
+        // consistent with how the self-service pipeline (and every other
+        // mysqldump-in-cron pattern) handles it. If this ever needs
+        // hardening, swap for `--defaults-extra-file=<(printf "[client]\\n
+        // password=%s\\n" "$MYSQL_PW")` — but that trades ps-visibility
+        // for shell-history + tempfile visibility, so it isn't obviously
+        // better on a single-tenant cluster.
+        // -----------------------------------------------------------------
+        stage('Dump database') {
+            steps {
+                withCredentials([string(credentialsId: 'wvc_mysql_password', variable: 'MYSQL_PW')]) {
+                    sh '''
+                        set -eu
+                        DUMP_STAMP=$(date -u +%Y%m%d-%H%M%S)
+                        DUMP_FILE="kvmaestro-mysql-${DUMP_STAMP}.sql"
+                        echo "Dumping ${DB_NAME} from ${MYSQL_STS} in ns ${K8S_NAMESPACE} -> ${DUMP_FILE}"
+
+                        kubectl -n "${K8S_NAMESPACE}" exec "${MYSQL_STS}" -- \\
+                            mysqldump -u root -p"${MYSQL_PW}" \\
+                            --single-transaction --set-gtid-purged=OFF \\
+                            --default-character-set=utf8mb4 \\
+                            --routines --events \\
+                            "${DB_NAME}" > "${DUMP_FILE}"
+
+                        # Guard against silent-failure dumps: a truly empty
+                        # or trivially small file means mysqldump errored
+                        # out before writing schema. 4KB is well below any
+                        # legitimate schema-only dump.
+                        DUMP_BYTES=$(stat -c '%s' "${DUMP_FILE}")
+                        echo "Dump size: ${DUMP_BYTES} bytes"
+                        if [ "${DUMP_BYTES}" -lt 4096 ]; then
+                            echo "ERROR: dump is suspiciously small (${DUMP_BYTES} bytes) — aborting before shipping" >&2
+                            head -c 2048 "${DUMP_FILE}" || true
+                            exit 1
+                        fi
+
+                        # Stash the filename for the next stage.
+                        echo "${DUMP_FILE}" > .dump-filename
+                    '''
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 3. SCP file to The Brain
+        //
+        // Ensure the wvc-specific subdirectory exists (idempotent — first
+        // build after directory rename doesn't fail), then scp the dump.
+        // Both operations use the same jenkins_SSH_key credential the
+        // self-service pipeline uses; adding wvc doesn't require a new key.
+        // -----------------------------------------------------------------
+        stage('SCP file to The Brain') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'jenkins_SSH_key', keyFileVariable: 'SSH_KEY')]) {
+                    sh '''
+                        set -eu
+                        DUMP_FILE=$(cat .dump-filename)
+
+                        # StrictHostKeyChecking off matches the self-service
+                        # pipeline's implicit behaviour (its scp doesn't set
+                        # -o and relies on Jenkins-user's ~/.ssh/known_hosts
+                        # having your-backup-host already). Setting it explicitly
+                        # here so a fresh agent — which has no known_hosts
+                        # entries — also succeeds first-run.
+                        SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+                        ssh -i "$SSH_KEY" $SSH_OPTS "${BACKUP_USER}@${BACKUP_HOST}" \\
+                            "mkdir -p ${BACKUP_DIR}"
+
+                        scp -i "$SSH_KEY" $SSH_OPTS "${DUMP_FILE}" \\
+                            "${BACKUP_USER}@${BACKUP_HOST}:${BACKUP_DIR}/"
+
+                        echo "Delivered ${DUMP_FILE} to ${BACKUP_HOST}:${BACKUP_DIR}/"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Don't leave large dumps piling up in the Jenkins workspace.
+            sh 'rm -f kvmaestro-mysql-*.sql .dump-filename || true'
+        }
+        success {
+            script {
+                def stamp = new Date().format("yyyy-MM-dd HH:mm:ss 'UTC'", TimeZone.getTimeZone('UTC'))
+                echo "Backup of ${env.DB_NAME} shipped to ${env.BACKUP_HOST}:${env.BACKUP_DIR}/ at ${stamp}"
+            }
+        }
+    }
+}

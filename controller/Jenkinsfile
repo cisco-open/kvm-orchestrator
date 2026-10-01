@@ -1,0 +1,257 @@
+// kvmaestro controller (wvc-api) Jenkins pipeline
+//
+// One of three per-component pipelines under this repo. Each pipeline builds
+// and pushes exactly one image; version-consistency is enforced across all
+// three components in every build so a partial deploy cannot ship an image
+// whose version disagrees with the others.
+//
+// This pipeline additionally runs the Alembic upgrade-head gate — that's
+// controller-owned code, and shipping a broken migration would poison a
+// helm upgrade for anyone consuming the API image.
+//
+// Environment assumptions (match jenkins.example.com as of 2026-07-02):
+//   - Only agent is the Jenkins built-in node. `agent any` binds there.
+//   - Docker 19.03.15 is installed and the jenkins user can talk to the daemon.
+//   - Registry credential ID: your-registry.example.com (username/password).
+//   - Git checkout uses the pipeline's SCM binding (credential id `github`
+//     configured on the job definition, not here).
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        timeout(time: 45, unit: 'MINUTES')
+    }
+
+    environment {
+        REGISTRY       = 'your-registry.example.com/kvmaestro'
+        REGISTRY_CREDS = 'your-registry.example.com'
+        IMAGE_NAME     = 'wvc-api'
+        BUILD_CONTEXT  = 'controller'
+        // APP_VERSION / GIT_SHA / BUILD_STAMP are populated by the Version
+        // stage via `env.X = sh(returnStdout: true, ...)`. Do NOT pre-declare
+        // them here: the environment{} directive creates an immutable
+        // binding that a later `env.X = 'foo'` cannot override, which caused
+        // build #3 across all three pipelines to publish images tagged as
+        // `wvc-*:null` (see the reruns after commit fixing this).
+    }
+
+    stages {
+
+        // -----------------------------------------------------------------
+        // 1. Version-consistency gate
+        //
+        // Reads controller/app/version.py (the canonical source) and
+        // verifies that the other five version-carrying files declare the
+        // exact same string. Any mismatch fails the build with a clear
+        // message pointing at the offending file. Done entirely in shell
+        // so the Groovy CPS parser never has to reason about regex
+        // literals — dropped a `/.../` slashy-string inside a list caused
+        // a compile error on build #1.
+        // -----------------------------------------------------------------
+        stage('Version consistency') {
+            steps {
+                sh '''
+                    set -eu
+
+                    # Pattern matches both Python (`VERSION = "..."`) and TS
+                    # (`export const VERSION = "..."`) declarations. Anchored
+                    # only on `VERSION *= *"` so RELEASE_NOTE et al. never match.
+                    CONTROLLER_VERSION=$(awk -F'"' '/VERSION *= *"/ {print $2; exit}' controller/app/version.py)
+                    echo "Canonical version from controller/app/version.py: $CONTROLLER_VERSION"
+
+                    if ! printf '%s\\n' "$CONTROLLER_VERSION" | grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+$'; then
+                        echo "controller/app/version.py has invalid VERSION='$CONTROLLER_VERSION' (expected vX.Y.Z)" >&2
+                        exit 1
+                    fi
+
+                    fail=0
+                    verify() {
+                        label="$1"
+                        file="$2"
+                        found="$3"
+                        if [ -z "$found" ]; then
+                            echo "FAIL: $label ($file): no version string extracted" >&2
+                            fail=1
+                            return
+                        fi
+                        if [ "$found" != "$CONTROLLER_VERSION" ]; then
+                            echo "FAIL: $label ($file): expected '$CONTROLLER_VERSION', got '$found'" >&2
+                            fail=1
+                            return
+                        fi
+                        echo "OK:   $label ($file) = $found"
+                    }
+
+                    verify "console-proxy version.py" "console-proxy/proxy/version.py" \
+                        "$(awk -F'"' '/VERSION *= *"/ {print $2; exit}' console-proxy/proxy/version.py)"
+
+                    verify "frontend version.ts" "frontend/src/version.ts" \
+                        "$(awk -F'"' '/VERSION *= *"/ {print $2; exit}' frontend/src/version.ts)"
+
+                    for df in controller/Dockerfile console-proxy/Dockerfile frontend/Dockerfile; do
+                        verify "$df LABEL" "$df" \
+                            "$(awk -F'"' '/org\\.opencontainers\\.image\\.version/ {print $2; exit}' "$df")"
+                    done
+
+                    if [ "$fail" -ne 0 ]; then
+                        echo "Version consistency check FAILED" >&2
+                        exit 1
+                    fi
+                '''
+                script {
+                    // Capture the three build-identity strings via
+                    // returnStdout — scratch-file+readFile('.app-version')
+                    // returned null in the script block on build #3, which
+                    // caused every image tag to be pushed as `wvc-*:null`.
+                    env.APP_VERSION = sh(
+                        script: '''awk -F'"' '/VERSION *= *"/ {print $2; exit}' controller/app/version.py''',
+                        returnStdout: true
+                    ).trim()
+                    env.GIT_SHA     = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.BUILD_STAMP = sh(script: 'date -u +%Y-%m-%dT%H:%M:%SZ', returnStdout: true).trim()
+                    echo "APP_VERSION=${env.APP_VERSION}  GIT_SHA=${env.GIT_SHA}  BUILD_STAMP=${env.BUILD_STAMP}"
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 2. Build
+        //
+        // Build the wvc-api image BEFORE the Alembic gate so the migration
+        // check can run inside our own image (which already ships
+        // alembic.ini, migrations/, and all runtime deps from
+        // requirements.txt). Push only happens after Alembic succeeds.
+        //
+        // Why not run Alembic first with a stock python:3.11-slim + volume
+        // mount of the controller/ workspace, like the initial build #3
+        // attempt did? Because Jenkins runs in a container talking to the
+        // host docker daemon (docker-outside-of-docker). A bind mount of
+        // `-v $(pwd)/controller:/app` uses the Jenkins-container path in
+        // `pwd`, which the daemon on the host doesn't see — the daemon
+        // mounts an empty directory, so `alembic upgrade head` fails with
+        // "No 'script_location' key found in configuration". Running the
+        // gate inside our own already-built image sidesteps the mount
+        // entirely.
+        // -----------------------------------------------------------------
+        stage('Build') {
+            steps {
+                script {
+                    def tags = [
+                        "${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION}",
+                        "${env.REGISTRY}/${env.IMAGE_NAME}:${env.GIT_SHA}",
+                        "${env.REGISTRY}/${env.IMAGE_NAME}:latest",
+                    ]
+                    def tagArgs = tags.collect { "-t ${it}" }.join(' ')
+
+                    sh """
+                        docker build ${tagArgs} \\
+                            --label jenkins.build=${env.BUILD_NUMBER} \\
+                            --label org.opencontainers.image.revision=${env.GIT_SHA} \\
+                            --label org.opencontainers.image.created=${env.BUILD_STAMP} \\
+                            --label org.opencontainers.image.version=${env.APP_VERSION} \\
+                            ${env.BUILD_CONTEXT}
+                    """
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 3. Alembic upgrade head gate  (controller-only)
+        //
+        // Spin a throwaway MySQL 8, wait for readiness, run
+        // `alembic upgrade head` inside the freshly-built wvc-api image
+        // (which has alembic.ini at /app/alembic.ini and migrations/
+        // already baked in), then verify alembic_version has exactly one
+        // row. Fails the pipeline before we push if the migration is
+        // broken.
+        // -----------------------------------------------------------------
+        stage('Alembic upgrade head') {
+            steps {
+                script {
+                    def netName    = "wvc-alembic-${env.BUILD_NUMBER}"
+                    def mysqlName  = "alembic-mysql-${env.BUILD_NUMBER}"
+                    def apiImage   = "${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION}"
+
+                    try {
+                        sh "docker network create ${netName}"
+                        sh """
+                            docker run -d --rm --name ${mysqlName} --network ${netName} \\
+                                -e MYSQL_ROOT_PASSWORD=alembicroot \\
+                                -e MYSQL_DATABASE=kvmaestro \\
+                                -e MYSQL_USER=wvc \\
+                                -e MYSQL_PASSWORD=alembicpass \\
+                                mysql:8
+                        """
+
+                        // Wait for MySQL to accept connections (max ~60s).
+                        sh """
+                            for i in \$(seq 1 30); do
+                                if docker exec ${mysqlName} mysqladmin ping -h 127.0.0.1 -uroot -palembicroot --silent 2>/dev/null; then
+                                    echo "MySQL ready after \$i attempts"
+                                    exit 0
+                                fi
+                                sleep 2
+                            done
+                            echo "MySQL never became ready"
+                            docker logs ${mysqlName} || true
+                            exit 1
+                        """
+
+                        // Run alembic inside our own image. WORKDIR is /app,
+                        // alembic.ini + migrations/ are baked in, and every
+                        // runtime dep (alembic, pymysql, sqlalchemy,
+                        // cryptography) is already installed via
+                        // requirements.txt. Dockerfile has no ENTRYPOINT so
+                        // we just override CMD with a bash -c.
+                        sh """
+                            docker run --rm --network ${netName} \\
+                                -e DATABASE_URL="mysql+pymysql://wvc:alembicpass@${mysqlName}:3306/kvmaestro" \\
+                                ${apiImage} \\
+                                bash -c 'set -eux; alembic upgrade head; alembic current'
+                        """
+
+                        sh """
+                            docker exec ${mysqlName} mysql -uroot -palembicroot \\
+                                -N -B -e 'SELECT COUNT(*) FROM kvmaestro.alembic_version;' \\
+                                | grep -q '^1\$' || { echo "alembic_version row-count is not 1"; exit 1; }
+                        """
+                    } finally {
+                        sh "docker rm -f ${mysqlName} || true"
+                        sh "docker network rm ${netName} || true"
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 4. Push
+        // -----------------------------------------------------------------
+        stage('Push') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.REGISTRY_CREDS,
+                    usernameVariable: 'REG_USER',
+                    passwordVariable: 'REG_PASS'
+                )]) {
+                    sh 'echo "$REG_PASS" | docker login your-registry.example.com -u "$REG_USER" --password-stdin'
+                    sh "docker push ${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION}"
+                    sh "docker push ${env.REGISTRY}/${env.IMAGE_NAME}:${env.GIT_SHA}"
+                    sh "docker push ${env.REGISTRY}/${env.IMAGE_NAME}:latest"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout your-registry.example.com || true'
+            sh 'docker image prune -f --filter "label=jenkins.build=${BUILD_NUMBER}" || true'
+        }
+        success {
+            echo "Pushed ${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION} (${env.GIT_SHA})"
+        }
+    }
+}

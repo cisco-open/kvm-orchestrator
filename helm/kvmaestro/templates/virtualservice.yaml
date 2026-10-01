@@ -1,0 +1,73 @@
+{{- if .Values.istio.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "kvmaestro.fullname" . }}
+  labels:
+    {{- include "kvmaestro.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ .Values.istio.host | quote }}
+  gateways:
+    # References the Gateway resource in the same namespace as this
+    # VirtualService (unqualified name = same-namespace lookup).
+    - {{ include "kvmaestro.fullname" . }}
+  http:
+    # ------------------------------------------------------------------
+    # /api/*  →  Flask API on gunicorn (:8000)
+    # ------------------------------------------------------------------
+    - match:
+        - uri:
+            prefix: /api/
+        - uri:
+            exact: /api
+      route:
+        - destination:
+            host: kvmaestro-api
+            port:
+              number: 8000
+      timeout: {{ .Values.istio.apiTimeout | default "3600s" }}
+
+    # ------------------------------------------------------------------
+    # /healthz  →  API (unauthenticated Flask blueprint, DB SELECT 1)
+    # Kept as a dedicated route so external monitoring can hit it without
+    # traversing the /api prefix.
+    # ------------------------------------------------------------------
+    - match:
+        - uri:
+            exact: /healthz
+      route:
+        - destination:
+            host: kvmaestro-api
+            port:
+              number: 8000
+
+    # ------------------------------------------------------------------
+    # /console-ws/*  →  console-proxy websocket (:8765)
+    # Istio 1.5+ handles WebSocket Upgrade natively; no annotation needed.
+    # Timeout intentionally long — console sessions may sit idle.
+    # ------------------------------------------------------------------
+    - match:
+        - uri:
+            prefix: /console-ws
+      route:
+        - destination:
+            host: kvmaestro-console-proxy
+            port:
+              number: 8765
+      timeout: {{ .Values.istio.consoleTimeout | default "3600s" }}
+
+    # ------------------------------------------------------------------
+    # /*  →  static UI (nginx :80)
+    # Must be last — Istio route matching is first-match, prefix /
+    # would otherwise shadow the /api and /console-ws routes above.
+    # ------------------------------------------------------------------
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: kvmaestro-ui
+            port:
+              number: 80
+{{- end }}

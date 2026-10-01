@@ -1,0 +1,6 @@
+apiVersion: v2
+name: kvmaestro
+description: KVMaestro — self-service KVM/libvirt VM management
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

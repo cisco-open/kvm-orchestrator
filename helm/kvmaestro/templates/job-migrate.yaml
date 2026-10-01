@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kvmaestro.fullname" . }}-migrate
+  labels:
+    {{- include "kvmaestro.labels" . | nindent 4 }}
+  annotations:
+    # post-install / post-upgrade — a pre-install hook can't work here
+    # because pre-install runs BEFORE any non-hook resource (ConfigMap,
+    # Secret, MySQL StatefulSet). The migrate container needs env from
+    # the ConfigMap + Secret and a live MySQL to hit, so it has to run
+    # after those. hook-weight 1 keeps it ordered ahead of anything else
+    # we may add later at weight 2+.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  # Give the schema migration up to 10 minutes to complete — the initContainer
+  # loop will burn some of that budget waiting for MySQL StatefulSet + Ceph PV
+  # attach + mysqld init on a cold-start cluster.
+  activeDeadlineSeconds: 600
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Wait for MySQL to accept connections. The StatefulSet is created
+        # in the main install phase (before this post-install hook runs)
+        # but the pod may still be initialising (Ceph PV attach + mysqld
+        # bootstrap can take 30-60s on a cold node). Bail after ~2min so
+        # the Job's activeDeadlineSeconds kicks in cleanly if MySQL never
+        # comes up.
+        - name: wait-for-mysql
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              for i in $(seq 1 60); do
+                if nc -z mysql 3306 2>/dev/null; then
+                  echo "MySQL ready after $i attempts"
+                  exit 0
+                fi
+                echo "waiting for mysql:3306 (attempt $i/60)"
+                sleep 2
+              done
+              echo "MySQL never became ready"
+              exit 1
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "kvmaestro.fullname" . }}-config
+            - secretRef:
+                name: {{ include "kvmaestro.fullname" . }}-secrets

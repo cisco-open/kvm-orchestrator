@@ -1,0 +1,4 @@
+# Console proxy dependencies
+websockets==14.*
+redis==5.2.*
+asyncssh==2.19.*

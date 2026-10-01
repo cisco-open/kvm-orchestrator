@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Static name (see api-service.yaml for rationale). Matches Docker Compose.
+  name: kvmaestro-console-proxy
+  labels:
+    {{- include "kvmaestro.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-proxy
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8765
+      targetPort: 8765
+      protocol: TCP
+  selector:
+    {{- include "kvmaestro.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: console-proxy

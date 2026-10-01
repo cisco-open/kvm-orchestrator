@@ -1,0 +1,72 @@
+{{- if .Values.mysql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "kvmaestro.fullname" . }}-mysql
+  labels:
+    {{- include "kvmaestro.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
+spec:
+  serviceName: mysql
+  replicas: 1
+  # Belt-and-braces: keep PVCs around even if the StatefulSet is deleted
+  # or scaled down. Combined with the underlying PV reclaimPolicy=Retain,
+  # this makes MySQL data survive any accidental helm uninstall or scale
+  # to zero. StatefulSet defaults are already Retain/Retain, but making
+  # it explicit guards against future k8s default changes.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- include "kvmaestro.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mysql
+  template:
+    metadata:
+      labels:
+        {{- include "kvmaestro.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          # InnoDB defaults (O_DIRECT + native AIO) don't work on NFS mounts.
+          # Force fsync flush + userspace AIO so the datafiles can live on
+          # the nfs-csi share. Harmless on block storage — switch back to
+          # defaults once we return to cstor.
+          args:
+            - --innodb-flush-method=fsync
+            - --innodb-use-native-aio=OFF
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: {{ .Values.mysql.rootPassword | default "changeme" | quote }}
+            - name: MYSQL_DATABASE
+              value: {{ .Values.mysql.database | default "kvmaestro" | quote }}
+            - name: MYSQL_USER
+              value: {{ .Values.mysql.user | default "kvmaestro" | quote }}
+            - name: MYSQL_PASSWORD
+              value: {{ .Values.mysql.password | default "changeme" | quote }}
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: mysql-data
+      spec:
+        accessModes: ["ReadWriteMany"]
+        {{- if .Values.mysql.storageClass }}
+        storageClassName: {{ .Values.mysql.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.mysql.storage }}
+{{- end }}

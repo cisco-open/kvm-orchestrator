@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kvmaestro.fullname" . }}-api
+  labels:
+    {{- include "kvmaestro.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector:
+    matchLabels:
+      {{- include "kvmaestro.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "kvmaestro.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      annotations:
+        # Picked up by the generic `kubernetes-pods` scrape job in the
+        # monitoring-scrape/prometheus-server-conf ConfigMap. That job's
+        # relabel_configs turn each pod name into its own `instance`
+        # label, which is what we want when there are multiple api
+        # replicas — each pod has its own prometheus_client multiproc dir
+        # (/tmp/prometheus_multiproc, per-pod tmpfs), so counters must be
+        # aggregated at the pod level, not the Service level.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "kvmaestro.fullname" . }}-config
+            - secretRef:
+                name: {{ include "kvmaestro.fullname" . }}-secrets
+          {{- if .Values.adminBootstrap.enabled }}
+          # Break-glass admin password sourced from an externally-managed
+          # Secret (not chart-managed), so it survives helm upgrades and never
+          # enters helm state/values/repo.
+          env:
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.adminBootstrap.secretName | quote }}
+                  key: {{ .Values.adminBootstrap.secretKey | quote }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3

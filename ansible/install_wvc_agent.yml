@@ -1,0 +1,142 @@
+---
+# Install / update the kvmaestro node agent (wvc-agent) on KVM hosts.
+#
+# The agent pushes a heartbeat every `heartbeat_interval` seconds to the
+# controller's /api/agent/heartbeat endpoint. This is what HA failure-detection
+# relies on: when a host dies, its heartbeats stop and the controller's HA
+# engine flags it after HA_FAILOVER_THRESHOLD seconds.
+#
+# Runs in HEARTBEAT-ONLY mode (--no-api): only requests + psutil are needed,
+# avoiding the libvirt-python/flask build on every host. The controller drives
+# all VM actions over SSH, so the agent's command API is not required.
+#
+# Usage:
+#   ansible-playbook -i inventory-test.ini install_wvc_agent.yml \
+#     -e controller_url=https://test.example.com \
+#     -e agent_key=test-agent-key
+#
+# Idempotent: re-running updates code/config and restarts only on change.
+
+- name: Install kvmaestro node agent
+  hosts: kvm_agents
+  remote_user: opsadmin
+  become: true
+  gather_facts: true
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    wvc_agent_dir: /opt/wvc-agent
+    wvc_agent_venv: /opt/wvc-agent/venv
+    wvc_agent_config_dir: /etc/wvc-agent
+    heartbeat_interval: 10
+    # Set false for lab controllers whose TLS cert has no trusted CA chain.
+    verify_tls: false
+    # controller_url and agent_key MUST be supplied via -e (no insecure default).
+
+  pre_tasks:
+    - name: Fail fast if required vars are missing
+      ansible.builtin.assert:
+        that:
+          - controller_url is defined and controller_url | length > 0
+          - agent_key is defined and agent_key | length > 0
+        fail_msg: >-
+          You must pass -e controller_url=<url> -e agent_key=<key>.
+
+  tasks:
+    - name: Ensure python3 + venv are present
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-venv
+        state: present
+
+    - name: Create agent directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - "{{ wvc_agent_dir }}"
+        - "{{ wvc_agent_config_dir }}"
+
+    - name: Copy agent package
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../agent/wvc_agent/"
+        dest: "{{ wvc_agent_dir }}/wvc_agent/"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart wvc-agent
+
+    - name: Create virtualenv
+      ansible.builtin.command:
+        cmd: python3 -m venv {{ wvc_agent_venv }}
+        creates: "{{ wvc_agent_venv }}/bin/python"
+
+    - name: Install heartbeat-only python deps into venv
+      ansible.builtin.pip:
+        name:
+          - requests>=2.32
+          - psutil>=6.1
+          - pyyaml>=6.0
+        virtualenv: "{{ wvc_agent_venv }}"
+        state: present
+
+    - name: Write agent config
+      ansible.builtin.copy:
+        dest: "{{ wvc_agent_config_dir }}/config.yaml"
+        owner: root
+        group: root
+        mode: "0640"
+        content: |
+          controller_url: "{{ controller_url }}"
+          agent_key: "{{ agent_key }}"
+          heartbeat_interval: {{ heartbeat_interval }}
+          verify_tls: {{ verify_tls | lower }}
+      notify: Restart wvc-agent
+
+    - name: Install systemd unit (heartbeat-only)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/wvc-agent.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=KVMaestro Node Agent (heartbeat)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=root
+          Environment=PYTHONPATH={{ wvc_agent_dir }}
+          ExecStart={{ wvc_agent_venv }}/bin/python -m wvc_agent.main --no-api --config {{ wvc_agent_config_dir }}/config.yaml
+          Restart=always
+          RestartSec=5
+          StandardOutput=journal
+          StandardError=journal
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - Reload systemd
+        - Restart wvc-agent
+
+    - name: Enable + start wvc-agent
+      ansible.builtin.systemd:
+        name: wvc-agent
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart wvc-agent
+      ansible.builtin.systemd:
+        name: wvc-agent
+        state: restarted

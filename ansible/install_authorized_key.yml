@@ -1,0 +1,14 @@
+---
+- name: Install kvmaestro SSH public key for root
+  hosts: kvm_all
+  remote_user: opsadmin
+  become: true
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+
+  tasks:
+    - name: Add kvmaestro public key to root authorized_keys
+      ansible.builtin.authorized_key:
+        user: root
+        state: present
+        key: "{{ lookup('file', playbook_dir + '/../keys/kvmaestro.pub') }}"

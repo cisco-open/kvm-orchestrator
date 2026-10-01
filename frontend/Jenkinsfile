@@ -1,0 +1,152 @@
+// kvmaestro frontend (wvc-ui) Jenkins pipeline
+//
+// See controller/Jenkinsfile for the full rationale of the version-consistency
+// gate. This file omits the Alembic gate — it only builds the static-UI image.
+// The version check is still enforced across all six version-carrying files so
+// a mismatched frontend can never be pushed while the API and console-proxy
+// are on a different version.
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    environment {
+        REGISTRY       = 'your-registry.example.com/kvmaestro'
+        REGISTRY_CREDS = 'your-registry.example.com'
+        IMAGE_NAME     = 'wvc-ui'
+        BUILD_CONTEXT  = 'frontend'
+        // APP_VERSION / GIT_SHA / BUILD_STAMP are set in the Version stage
+        // via `env.X = sh(returnStdout: true, ...)`. Do NOT pre-declare them
+        // here — the environment{} directive creates an immutable binding
+        // that a later `env.X = 'foo'` cannot override, which surfaced on
+        // build #3 as `wvc-ui:null` being pushed. See controller/Jenkinsfile
+        // for the write-up.
+    }
+
+    stages {
+
+        // -----------------------------------------------------------------
+        // 1. Version-consistency gate. See controller/Jenkinsfile for the
+        //    long-form rationale. Same shell block across all three
+        //    pipelines by design — this gate protects the reproducibility
+        //    contract independently of which image is being built.
+        // -----------------------------------------------------------------
+        stage('Version consistency') {
+            steps {
+                sh '''
+                    set -eu
+
+                    # Pattern matches both Python (`VERSION = "..."`) and TS
+                    # (`export const VERSION = "..."`) declarations. Anchored
+                    # only on `VERSION *= *"` so RELEASE_NOTE et al. never match.
+                    CONTROLLER_VERSION=$(awk -F'"' '/VERSION *= *"/ {print $2; exit}' controller/app/version.py)
+                    echo "Canonical version from controller/app/version.py: $CONTROLLER_VERSION"
+
+                    if ! printf '%s\\n' "$CONTROLLER_VERSION" | grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+$'; then
+                        echo "controller/app/version.py has invalid VERSION='$CONTROLLER_VERSION' (expected vX.Y.Z)" >&2
+                        exit 1
+                    fi
+
+                    fail=0
+                    verify() {
+                        label="$1"
+                        file="$2"
+                        found="$3"
+                        if [ -z "$found" ]; then
+                            echo "FAIL: $label ($file): no version string extracted" >&2
+                            fail=1
+                            return
+                        fi
+                        if [ "$found" != "$CONTROLLER_VERSION" ]; then
+                            echo "FAIL: $label ($file): expected '$CONTROLLER_VERSION', got '$found'" >&2
+                            fail=1
+                            return
+                        fi
+                        echo "OK:   $label ($file) = $found"
+                    }
+
+                    verify "console-proxy version.py" "console-proxy/proxy/version.py" \
+                        "$(awk -F'"' '/VERSION *= *"/ {print $2; exit}' console-proxy/proxy/version.py)"
+
+                    verify "frontend version.ts" "frontend/src/version.ts" \
+                        "$(awk -F'"' '/VERSION *= *"/ {print $2; exit}' frontend/src/version.ts)"
+
+                    for df in controller/Dockerfile console-proxy/Dockerfile frontend/Dockerfile; do
+                        verify "$df LABEL" "$df" \
+                            "$(awk -F'"' '/org\\.opencontainers\\.image\\.version/ {print $2; exit}' "$df")"
+                    done
+
+                    if [ "$fail" -ne 0 ]; then
+                        echo "Version consistency check FAILED" >&2
+                        exit 1
+                    fi
+                '''
+                script {
+                    // Capture the three build-identity strings via
+                    // returnStdout — scratch-file+readFile('.app-version')
+                    // returned null in the script block on build #3, which
+                    // caused every image tag to be pushed as `wvc-*:null`.
+                    env.APP_VERSION = sh(
+                        script: '''awk -F'"' '/VERSION *= *"/ {print $2; exit}' controller/app/version.py''',
+                        returnStdout: true
+                    ).trim()
+                    env.GIT_SHA     = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.BUILD_STAMP = sh(script: 'date -u +%Y-%m-%dT%H:%M:%SZ', returnStdout: true).trim()
+                    echo "APP_VERSION=${env.APP_VERSION}  GIT_SHA=${env.GIT_SHA}  BUILD_STAMP=${env.BUILD_STAMP}"
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                script {
+                    def tags = [
+                        "${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION}",
+                        "${env.REGISTRY}/${env.IMAGE_NAME}:${env.GIT_SHA}",
+                        "${env.REGISTRY}/${env.IMAGE_NAME}:latest",
+                    ]
+                    def tagArgs = tags.collect { "-t ${it}" }.join(' ')
+
+                    sh """
+                        docker build ${tagArgs} \\
+                            --label jenkins.build=${env.BUILD_NUMBER} \\
+                            --label org.opencontainers.image.revision=${env.GIT_SHA} \\
+                            --label org.opencontainers.image.created=${env.BUILD_STAMP} \\
+                            --label org.opencontainers.image.version=${env.APP_VERSION} \\
+                            ${env.BUILD_CONTEXT}
+                    """
+                }
+            }
+        }
+
+        stage('Push') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.REGISTRY_CREDS,
+                    usernameVariable: 'REG_USER',
+                    passwordVariable: 'REG_PASS'
+                )]) {
+                    sh 'echo "$REG_PASS" | docker login your-registry.example.com -u "$REG_USER" --password-stdin'
+                    sh "docker push ${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION}"
+                    sh "docker push ${env.REGISTRY}/${env.IMAGE_NAME}:${env.GIT_SHA}"
+                    sh "docker push ${env.REGISTRY}/${env.IMAGE_NAME}:latest"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout your-registry.example.com || true'
+            sh 'docker image prune -f --filter "label=jenkins.build=${BUILD_NUMBER}" || true'
+        }
+        success {
+            echo "Pushed ${env.REGISTRY}/${env.IMAGE_NAME}:${env.APP_VERSION} (${env.GIT_SHA})"
+        }
+    }
+}

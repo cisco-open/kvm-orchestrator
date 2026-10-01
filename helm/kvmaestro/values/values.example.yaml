@@ -1,0 +1,172 @@
+# ---------------------------------------------------------------------------
+# EXAMPLE values overlay for the KVMaestro Helm chart.
+#
+# COPY this file to e.g. `values/my-env.yaml`, fill in the PLACEHOLDER values
+# below, and deploy with:
+#
+#   helm upgrade --install kvmaestro helm/kvmaestro \
+#     -n <namespace> -f helm/kvmaestro/values/my-env.yaml
+#
+# Every value here is a PLACEHOLDER — there are NO real secrets, hosts, or
+# registries in this file. Replace anything that says CHANGE_ME or *.example.com
+# with your own values. Sensitive secrets (DB password, Ceph key, MCP API token
+# secret, Webex tokens) are best passed at upgrade time via `--set-string`
+# rather than committed to a values file.
+# ---------------------------------------------------------------------------
+
+# Container images. Point these at your own registry and pin immutable tags.
+image:
+  api:
+    repository: your-registry.example.com/kvmaestro/api
+    tag: latest
+    pullPolicy: Always
+  consoleProxy:
+    repository: your-registry.example.com/kvmaestro/console-proxy
+    tag: latest
+    pullPolicy: Always
+  ui:
+    repository: your-registry.example.com/kvmaestro/ui
+    tag: latest
+    pullPolicy: Always
+
+# If your registry needs credentials, create a docker-registry secret in the
+# target namespace and reference it here. Leave empty ([]) for public/anon pulls.
+imagePullSecrets: []
+#  - name: my-registry-secret
+
+replicaCount:
+  api: 1
+  # worker + beat must be >= 1 for the HA engine and periodic tasks to run.
+  worker: 1
+  beat: 1
+  consoleProxy: 1
+  ui: 1
+
+hpa:
+  api:
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPU: 70
+  worker:
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPU: 80
+
+# Istio ingress. TLS secret must live in the istio-system namespace (SDS),
+# NOT in this application namespace.
+istio:
+  enabled: true
+  gatewaySelector: ingressgateway
+  host: kvmaestro.example.com
+  httpRedirect: true
+  tls:
+    enabled: true
+    secretName: kvmaestro-tls
+  apiTimeout: 3600s
+  consoleTimeout: 3600s
+
+config:
+  # UI brand preset: "kvmaestro" is the default open-source identity.
+  BRANDING: "kvmaestro"
+  # Environment identity — "live" is the normal (blue) theme; "test" renders a
+  # red test theme and prefixes notifications.
+  ENVIRONMENT: "live"
+
+  JWT_ACCESS_TOKEN_EXPIRES: "900"
+  JWT_REFRESH_TOKEN_EXPIRES: "604800"
+
+  # LDAP — one-time SEED only. After first migrate these are copied into the
+  # app_settings DB table and configured from the admin UI (no redeploy).
+  # Safe to leave blank on a fresh install and configure in the UI.
+  LDAP_ENABLED: "true"
+  LDAP_URI: "ldaps://ldap.example.com:636"
+  LDAP_BASE_DN: "DC=example,DC=com"
+  LDAP_USER_FILTER: "(sAMAccountName={username})"
+  LDAP_GROUP_BASE_DN: "DC=example,DC=com"
+  LDAP_ADMIN_GROUP: "CN=kvm-admins,OU=groups,DC=example,DC=com"
+
+  HEARTBEAT_INTERVAL: "10"
+  NODE_SUSPECT_THRESHOLD: "30"
+  NODE_DOWN_THRESHOLD: "60"
+
+  # ---- HA engine ----------------------------------------------------------
+  # Master arm. Detection + logging run when worker/beat are up; ACTION
+  # (fence + relocate) additionally requires the Redis runtime kill-switch
+  # (admin HA panel) AND per-node nodes.ha_enabled=1. Blank HA_CEPH_KEY in the
+  # secrets block => fencing aborts (safe).
+  HA_ENABLED: "false"
+  HA_FAILOVER_THRESHOLD: "120"
+  HA_CEPH_USER: "kvmaestro-ha"
+  HA_CEPH_MON_HOST: "10.0.0.11,10.0.0.12,10.0.0.13"
+  WEBEX_DEEP_LINK_BASE: "https://kvmaestro.example.com"
+
+  # ---- VM lifecycle / TTL -------------------------------------------------
+  # Ships DISARMED. Arm from the VMs-page toggle (persisted in DB, no redeploy).
+  # DESTRUCTIVE=true allows actually stopping expired VMs. Real 1-year timings.
+  LIFECYCLE_ENABLED: "false"
+  LIFECYCLE_DESTRUCTIVE: "false"
+  LIFECYCLE_TTL_DAYS: "365"
+  LIFECYCLE_WARN1_DAYS_BEFORE: "30"
+  LIFECYCLE_WARN2_DAYS_BEFORE: "15"
+  LIFECYCLE_STOP_GRACE_DAYS: "0"
+  LIFECYCLE_POSTSTOP_WARN_DAYS: "15"
+  LIFECYCLE_OPS_DELETE_DAYS: "30"
+
+# All secrets are PLACEHOLDERS. Prefer passing sensitive values via
+# `--set-string secrets.X=...` at upgrade time rather than committing them.
+secrets:
+  DATABASE_URL: "mysql+pymysql://kvmaestro:CHANGE_ME_DB_PASSWORD@mysql:3306/kvmaestro"
+  REDIS_URL: "redis://redis:6379/0"
+  FLASK_SECRET_KEY: "CHANGE_ME"
+  JWT_SECRET_KEY: "CHANGE_ME"
+  LDAP_BIND_DN: "svc-kvmaestro"
+  LDAP_BIND_PASSWORD: "CHANGE_ME_LDAP_BIND_PASSWORD"
+  AGENT_SHARED_KEY: "CHANGE_ME"
+  # OPTIONAL — only needed if you run an external MCP/automation sidecar that
+  # calls the API with an impersonation token (see controller/app/middleware/
+  # mcp.py). It is a bearer API token shared between that sidecar and the API.
+  # Leave blank to disable the MCP impersonation path entirely.
+  MCP_SHARED_SECRET: "API_TOKEN_CHANGE_ME"
+  # Ceph fencing key for the HA client identity (only if you enable HA fencing).
+  # Blank => fencing aborts (safe default).
+  HA_CEPH_KEY: ""
+  # Webex HA notification cards: BOTH must be set for cards to fire.
+  WEBEX_BOT_TOKEN: ""
+  WEBEX_HA_ROOM_ID: ""
+
+# Break-glass admin (username "admin", bypasses LDAP). Password lives in an
+# externally-managed Secret you create out-of-band — never in this file:
+#   kubectl -n <ns> create secret generic kvmaestro-admin-bootstrap \
+#     --from-literal=ADMIN_PASSWORD='<strong-password>'
+adminBootstrap:
+  enabled: false
+  secretName: kvmaestro-admin-bootstrap
+  secretKey: ADMIN_PASSWORD
+
+mysql:
+  enabled: true
+  storage: 20Gi
+  storageClass: ""
+  rootPassword: "CHANGE_ME_DB_PASSWORD"
+  user: "kvmaestro"
+  password: "CHANGE_ME_DB_PASSWORD"
+  database: "kvmaestro"
+
+redis:
+  enabled: true
+  storage: 5Gi
+  storageClass: ""
+
+resources:
+  api:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }
+  worker:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  consoleProxy:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  ui:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }
