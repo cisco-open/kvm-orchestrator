@@ -13,7 +13,7 @@ export interface Node {
   ssh_key_id: number | null;
   ssh_key_name: string | null;
   cpu_model: string | null;
-  status: "online" | "offline" | "maintenance" | "fenced";
+  status: "online" | "offline" | "maintenance" | "fenced" | "failed";
   total_vcpus: number;
   total_ram_mb: number;
   available_vcpus: number;

@@ -1,2 +1,2 @@
-export const VERSION = "v0.33.1";
-export const RELEASE_NOTE = "New admin-only Users tab: configure LDAP/Active Directory (server, base-user and admin-group settings) directly in the UI — changes apply with no redeploy. A built-in 'admin' account (set via ADMIN_PASSWORD) always works even when LDAP is down, so you can set everything up on a fresh install. The LDAP bind password is write-only and stored encrypted.";
+export const VERSION = "v0.34.0";
+export const RELEASE_NOTE = "HA reliability release: Readmit now works for 'failed' nodes (not just 'fenced'); a mass-failure circuit breaker stops a controller-side blip from flagging the whole fleet; nodes flagged 'failed' auto-recover once they heartbeat again; and OVS VLAN bridges on the nodes are auto-discovered into the networks catalog.";

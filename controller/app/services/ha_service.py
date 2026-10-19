@@ -712,7 +712,21 @@ def readmit_node(node: dict, survivor: dict) -> dict:
 
     # 2. Split-brain guard: none of the relocated images may still show the
     #    returning host as a watcher/lock holder.
-    try:
+    #
+    # Short-circuit for false positives: a node flagged 'failed' by the HA
+    # engine that was NEVER fenced (never Ceph-blocklisted) and had NOTHING
+    # relocated off it (its VMs never moved) has no images to check and no
+    # blocklist entries to remove. Entering _CephFence would hard-fail when
+    # HA_CEPH_KEY is unset, blocking recovery of a perfectly healthy host that
+    # is simply heartbeating again. In that case skip straight to marking it
+    # online — there is no split-brain risk because nothing ever moved.
+    if not relocated["vm_names"] and not relocated["images"]:
+        logger.warning(
+            "READMIT node %s (%s): no relocated domains/images — false-positive "
+            "'failed' (never fenced). Skipping Ceph fence-check, marking online.",
+            node["hostname"], dead_ip)
+    else:
+      try:
         with _CephFence(survivor) as fence:
             for image in relocated["images"]:
                 out, err, rc = _ssh_run(
@@ -760,7 +774,7 @@ def readmit_node(node: dict, survivor: dict) -> dict:
                 )
                 if rc == 0:
                     detail["unblocklisted"].append(entry)
-    except Exception as exc:
+      except Exception as exc:
         return {"error": f"readmit fence-check error: {exc}", "detail": detail}
 
     # 4. Mark node online again.

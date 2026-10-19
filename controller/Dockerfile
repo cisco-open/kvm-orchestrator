@@ -12,7 +12,7 @@
 
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.version="v0.33.1" \
+LABEL org.opencontainers.image.version="v0.34.0" \
       org.opencontainers.image.description="VM-HA v2 — human-in-the-loop failover: detect+confirm dead node (Ceph watcher partition guard), mark failed + notify (no auto-fence), admin fences via button, interlock blocks recovery until fenced, rebuild from captured XML onto arch-matched target, readmit safety pre-flight + full blocklist cleanup, admin recovery checklist."
 
 # Prometheus multiprocess-mode shard directory. MUST be set before any

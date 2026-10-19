@@ -694,12 +694,12 @@ export default function Nodes() {
                         >
                           <Tags size={16} />
                         </button>
-                        {node.status === "fenced" ? (
+                        {node.status === "fenced" || node.status === "failed" ? (
                           <button
                             onClick={() => handleReadmit(node)}
                             disabled={readmitMutation.isPending}
                             className="text-orange-500 hover:text-green-600 disabled:opacity-40"
-                            title="Readmit fenced node (guarded recovery)"
+                            title="Readmit fenced/failed node (guarded recovery)"
                           >
                             <LifeBuoy size={16} />
                           </button>

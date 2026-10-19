@@ -121,3 +121,75 @@ def notify_node_failed(hostname: str, node_id: int) -> None:
                            resp.status_code, resp.text[:200])
     except Exception:
         logger.exception("Webex node-failed notify error")
+
+
+def notify_mass_failure(stale_count: int, total_eligible: int) -> None:
+    """Alert Ops that the mass-failure circuit breaker tripped: a large fraction
+    of nodes went stale in one cycle, so HA SUPPRESSED flagging them (suspected
+    controller-side fault, not real host failures). No action was taken; nodes
+    self-heal as heartbeats resume."""
+    cfg = current_app.config
+    token = cfg.get("WEBEX_BOT_TOKEN")
+    room = cfg.get("WEBEX_HA_ROOM_ID")
+    if not token or not room:
+        logger.info("Webex not configured — skipping mass-failure notification")
+        return
+    prefix = "[***TEST***] " if cfg.get("ENVIRONMENT", "live") == "test" else ""
+    base = (cfg.get("WEBEX_DEEP_LINK_BASE", "") or "").rstrip("/")
+    link = f"{base}/ha" if base else ""
+    md = (
+        f"{prefix}🟠 **HA: mass-failure SUPPRESSED**\n\n"
+        f"- **{stale_count}/{total_eligible}** HA-eligible nodes went stale in a "
+        f"single cycle.\n"
+        f"- This almost always means a **controller-side fault** (node-monitor "
+        f"poller stalled, DB/network blip, worker/beat restart) — NOT a real "
+        f"simultaneous host failure.\n"
+        f"- HA took **no action**: no nodes were flagged failed. They will "
+        f"self-heal as heartbeats resume.\n"
+        f"- **Check:** the controller worker/beat pods and DB connectivity.\n"
+    )
+    if link:
+        md += f"\n[Open HA page]({link})"
+    try:
+        resp = requests.post(
+            _API, headers={"Authorization": f"Bearer {token}"},
+            json={"roomId": room, "markdown": md}, timeout=10)
+        if resp.status_code // 100 != 2:
+            logger.warning("Webex mass-failure post failed %s: %s",
+                           resp.status_code, resp.text[:200])
+    except Exception:
+        logger.exception("Webex mass-failure notify error")
+
+
+def notify_auto_recovered(hostnames: list) -> None:
+    """Inform Ops that one or more nodes previously flagged 'failed' have
+    auto-recovered (heartbeat resumed) and were cleared back to 'online'. This
+    is a benign/good-news notice — no action required."""
+    if not hostnames:
+        return
+    cfg = current_app.config
+    token = cfg.get("WEBEX_BOT_TOKEN")
+    room = cfg.get("WEBEX_HA_ROOM_ID")
+    if not token or not room:
+        logger.info("Webex not configured — skipping auto-recovery notification")
+        return
+    prefix = "[***TEST***] " if cfg.get("ENVIRONMENT", "live") == "test" else ""
+    n = len(hostnames)
+    listing = ", ".join(hostnames[:10]) + (" …" if n > 10 else "")
+    md = (
+        f"{prefix}🟢 **HA: auto-recovered {n} node(s)**\n\n"
+        f"- {listing}\n"
+        f"- Previously flagged **failed** by the HA engine; heartbeat has "
+        f"resumed, so they were automatically cleared back to **online**.\n"
+        f"- These nodes were never fenced and had no VMs relocated — no action "
+        f"required.\n"
+    )
+    try:
+        resp = requests.post(
+            _API, headers={"Authorization": f"Bearer {token}"},
+            json={"roomId": room, "markdown": md}, timeout=10)
+        if resp.status_code // 100 != 2:
+            logger.warning("Webex auto-recovery post failed %s: %s",
+                           resp.status_code, resp.text[:200])
+    except Exception:
+        logger.exception("Webex auto-recovery notify error")

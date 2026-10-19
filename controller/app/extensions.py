@@ -55,6 +55,10 @@ def init_celery(app):
             # no-op unless LIFECYCLE_ENABLED=true.
             "schedule": 21600.0,
         },
+        "discover-networks": {
+            "task": "app.tasks.network_discovery.discover_networks",
+            "schedule": 3600.0,  # Every hour — pick up newly-added VLANs
+        },
     }
 
     class ContextTask(celery.Task):

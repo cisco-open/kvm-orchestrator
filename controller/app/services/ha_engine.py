@@ -53,6 +53,91 @@ def _failover_threshold() -> int:
 # Detection
 # ---------------------------------------------------------------------------
 
+def auto_recover_failed_nodes() -> list[dict]:
+    """Un-stick nodes that were flagged 'failed' by the HA engine but are now
+    heartbeating normally again.
+
+    A 'failed' node is one the engine confirmed unreachable on a prior cycle
+    and flagged for admin attention. Crucially it was NEVER fenced: the engine
+    does not fence or relocate anything when it flags 'failed' (that is an
+    explicit admin action that moves the node to 'fenced'). So a 'failed' node
+    has provably had ZERO relocations — nothing destructive happened, no stale
+    domains exist elsewhere, no split-brain is possible. If its heartbeat is
+    fresh again, the flag was a false positive (transient blip, mgmt-network
+    hiccup, controller-side poller stall) and we can safely clear it back to
+    'online' with no readmit dance.
+
+    IMPORTANT: this ONLY recovers 'failed'. It deliberately NEVER touches
+    'fenced' — a fenced node WAS Ceph-blocklisted and its VMs WERE relocated,
+    so returning it to service requires the guarded, human-gated readmit
+    (destroy stale domains + split-brain watcher check) and must not be
+    automated.
+
+    Returns the list of nodes recovered this cycle (possibly empty).
+    """
+    threshold = _failover_threshold()
+    # Require the heartbeat to be comfortably fresh — within the failover
+    # threshold — so we only recover a node that is unambiguously back, not one
+    # flapping right at the edge of the timeout.
+    cutoff = datetime.utcnow() - timedelta(seconds=threshold)
+
+    conn = _get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, hostname, ip_address, last_heartbeat_at
+                FROM nodes
+                WHERE status = 'failed'
+                  AND last_heartbeat_at IS NOT NULL
+                  AND last_heartbeat_at >= %s
+                """,
+                (cutoff,),
+            )
+            recovered = cur.fetchall()
+            if recovered:
+                ids = [n["id"] for n in recovered]
+                fmt = ",".join(["%s"] * len(ids))
+                cur.execute(
+                    f"UPDATE nodes SET status = 'online' "
+                    f"WHERE id IN ({fmt}) AND status = 'failed'",
+                    ids,
+                )
+            conn.commit()
+    finally:
+        conn.close()
+
+    for n in recovered:
+        age = (datetime.utcnow() - n["last_heartbeat_at"]).total_seconds()
+        logger.warning(
+            "HA AUTO-RECOVERY: node %s (%s) was 'failed' but is heartbeating "
+            "again (%.0fs fresh) — clearing to 'online' (false positive, never "
+            "fenced, zero relocations).",
+            n["hostname"], n["ip_address"], age,
+        )
+        try:
+            ha_service.record_ha_event(
+                node_id=n["id"], trigger="heartbeat_recovered",
+                result="auto_recovered",
+                detail={"fresh_seconds": int(age), "threshold": threshold,
+                        "note": "node flagged 'failed' recovered its heartbeat; "
+                                "auto-cleared to online (was never fenced)"},
+            )
+        except Exception:
+            logger.exception("auto-recovery event record failed (non-fatal)")
+
+    if recovered:
+        try:
+            from . import ha_notify
+            if hasattr(ha_notify, "notify_auto_recovered"):
+                ha_notify.notify_auto_recovered(
+                    [n["hostname"] for n in recovered])
+        except Exception:
+            logger.exception("auto-recovery notify failed (non-fatal)")
+
+    return list(recovered)
+
+
 def check_node_heartbeats() -> None:
     """Celery-beat entrypoint (every 15s). Find HA-eligible nodes whose
     last_heartbeat_at is stale beyond the failover threshold and are not
@@ -61,6 +146,15 @@ def check_node_heartbeats() -> None:
     Runs whether or not HA is armed — detection + logging always happen;
     the ACTION (fence/relocate) inside relocate_vms is what's gated.
     """
+    # FIRST: un-stick any 'failed' node that is heartbeating again. This heals
+    # false positives (transient blips, the 2026-10-15 mass event) without
+    # admin intervention. Safe because 'failed' nodes were never fenced and had
+    # no VMs relocated. Never touches 'fenced' (that needs guarded readmit).
+    try:
+        auto_recover_failed_nodes()
+    except Exception:
+        logger.exception("auto_recover_failed_nodes failed (non-fatal)")
+
     threshold = _failover_threshold()
     cutoff = datetime.utcnow() - timedelta(seconds=threshold)
 
@@ -83,6 +177,70 @@ def check_node_heartbeats() -> None:
         conn.close()
 
     if not dead:
+        return
+
+    # ------------------------------------------------------------------
+    # Mass-failure circuit breaker.
+    #
+    # If a large fraction of ALL ha-eligible nodes go stale in the SAME
+    # cycle, that is almost never a real simultaneous host failure — it is
+    # a CONTROLLER-SIDE fault (the node_monitor poller stopped, a DB/network
+    # blip, a worker/beat restart) that starved every node's
+    # last_heartbeat_at at once. Flagging the whole fleet 'failed' in that
+    # case is a self-inflicted outage: every node gets stuck 'failed' and
+    # needs manual readmit even though the hosts are perfectly healthy
+    # (exactly the 2026-10-15 incident). So if the stale set is "too big",
+    # we SUPPRESS the action, log, and alert once — and let the nodes
+    # self-heal as their heartbeats resume. A genuine multi-node failure
+    # that stays down will still be caught once the fleet-wide blip clears
+    # and only the truly-dead nodes remain stale.
+    import os as _os
+    try:
+        breaker_frac = float(_os.environ.get("HA_MASS_FAILURE_FRACTION", "0.5"))
+    except ValueError:
+        breaker_frac = 0.5
+    try:
+        breaker_min = int(_os.environ.get("HA_MASS_FAILURE_MIN", "3"))
+    except ValueError:
+        breaker_min = 3
+
+    conn = _get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS c FROM nodes "
+                "WHERE ha_enabled = 1 AND last_heartbeat_at IS NOT NULL"
+            )
+            total_eligible = (cur.fetchone() or {}).get("c", 0)
+    finally:
+        conn.close()
+
+    if (len(dead) >= breaker_min
+            and total_eligible > 0
+            and len(dead) >= breaker_frac * total_eligible):
+        logger.error(
+            "HA MASS-FAILURE CIRCUIT BREAKER: %d/%d ha-eligible nodes went stale "
+            "in one cycle (>= %.0f%%) — treating as a CONTROLLER-SIDE fault, NOT "
+            "flagging any node failed. Nodes will self-heal as heartbeats resume.",
+            len(dead), total_eligible, breaker_frac * 100,
+        )
+        ha_service.record_ha_event(
+            node_id=None, trigger="heartbeat_timeout", result="mass_suppressed",
+            detail={"stale_count": len(dead), "total_eligible": total_eligible,
+                    "fraction": round(len(dead) / total_eligible, 3),
+                    "note": "mass stale set suppressed — suspected controller-side "
+                            "fault (monitor/DB/network), not real host failures"},
+        )
+        try:
+            from . import ha_notify
+            from .ha_service import _redis
+            # Throttle to at most once every 10 min so a persistent blip does
+            # not spam the room; the log + ha_event above are written each cycle.
+            if _redis().set("ha:mass_failure_alerted", "1", nx=True, ex=600):
+                if hasattr(ha_notify, "notify_mass_failure"):
+                    ha_notify.notify_mass_failure(len(dead), total_eligible)
+        except Exception:
+            logger.exception("mass-failure notify failed (non-fatal)")
         return
 
     armed = ha_service.is_ha_armed()

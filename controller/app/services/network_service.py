@@ -351,3 +351,96 @@ def delete_network(network_id: int) -> dict:
         return {"ok": True}
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Auto-discovery (celery-beat) — keep the catalog in step with the fabric
+# ---------------------------------------------------------------------------
+
+# Only OVS bridges named like a real tenant VLAN are auto-imported. This
+# deliberately skips host-plumbing bridges (virbr0, docker0, linux bridges)
+# and libvirt 'network' definitions, which are not VM-attachable VLANs and
+# would just clutter the admin catalog.
+import re as _re
+
+_AUTO_IMPORT_RE = _re.compile(r"^ovs-vlan-(\d+)$")
+
+
+def discover_networks() -> dict:
+    """Scan online, schedulable nodes for OVS VLAN bridges and auto-add any
+    that are missing from the catalog.
+
+    Newly discovered bridges are inserted HIDDEN (user_visible=0, never
+    is_default) so an admin consciously reviews and promotes them before
+    non-admins can pick them. Existing rows are never modified or removed —
+    this task only ADDS, it never deletes (a bridge vanishing from one node
+    is not proof it is gone fleet-wide, and VMs may still reference it).
+
+    Returns a summary dict: {"added": [...], "already_known": N, "errors": [...]}.
+    """
+    from ..api.nodes import _get_node_resources
+
+    summary = {"added": [], "already_known": 0, "errors": []}
+
+    # Current catalog bridge_names (lowercased for a case-insensitive compare).
+    known = {
+        (n.get("bridge_name") or "").strip().lower()
+        for n in list_networks(visible_only=False)
+    }
+
+    # Union of OVS VLAN bridges seen across all online schedulable nodes.
+    conn = _get_db()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, hostname FROM nodes "
+                "WHERE status = 'online' AND schedulable = 1"
+            )
+            nodes = cur.fetchall()
+    finally:
+        conn.close()
+
+    discovered: dict[str, int] = {}  # bridge_name -> vlan_id
+    for node in nodes:
+        try:
+            res = _get_node_resources(node["id"])
+            if not isinstance(res, dict):
+                continue
+            for net in res.get("networks", []):
+                if net.get("type") != "ovs":
+                    continue
+                bridge = (net.get("name") or "").strip()
+                m = _AUTO_IMPORT_RE.match(bridge)
+                if not m:
+                    continue
+                discovered.setdefault(bridge, int(m.group(1)))
+        except Exception as exc:  # noqa: BLE001 — per-node best effort
+            summary["errors"].append(f"{node['hostname']}: {exc}")
+
+    for bridge, vlan_id in sorted(discovered.items(), key=lambda kv: kv[1]):
+        if bridge.lower() in known:
+            summary["already_known"] += 1
+            continue
+        res = create_network(
+            name=f"VLAN {vlan_id}",
+            bridge_name=bridge,
+            vlan_id=vlan_id,
+            description="Auto-discovered from node fabric (hidden — "
+                        "admin review required before user-visible)",
+            user_visible=False,
+            is_default=False,
+        )
+        if res.get("ok"):
+            summary["added"].append({"bridge_name": bridge, "vlan_id": vlan_id,
+                                     "id": res["id"]})
+            known.add(bridge.lower())
+            logger.info("Auto-discovered network %s (VLAN %s) -> id %s",
+                        bridge, vlan_id, res["id"])
+        else:
+            summary["errors"].append(f"{bridge}: {res.get('error')}")
+
+    if summary["added"]:
+        logger.info("Network discovery added %d new bridge(s): %s",
+                    len(summary["added"]),
+                    [a["bridge_name"] for a in summary["added"]])
+    return summary

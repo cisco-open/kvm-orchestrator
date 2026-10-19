@@ -1,2 +1,2 @@
-VERSION = "v0.33.1"
-RELEASE_NOTE = "console-proxy: asyncssh 2.19->2.24 security bump (v0.33.1 fleet patch)."
+VERSION = "v0.34.0"
+RELEASE_NOTE = "Version bump only, to stay consistent with the v0.34.0 HA reliability release. No console-proxy change."
