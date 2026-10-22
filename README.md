@@ -498,6 +498,7 @@ architecture and its troubleshooting table.
 
 | Version | Changes |
 |---|---|
+| v0.34.1 | Configurable per-brand user avatars — by default the sidebar shows an initial-letter avatar and never fetches from an external host; set `Brand.directoryPhotoBase` in `branding.ts` only if you run a corporate photo directory keyed by username |
 | v0.34.0 | HA reliability — Readmit now also recovers nodes in `failed` status (not just `fenced`); a mass-failure circuit breaker prevents a controller-side blip from flagging the whole fleet at once; nodes flagged `failed` auto-recover to `online` once they heartbeat again (fenced nodes still require guarded admin readmit); and OVS VLAN bridges present on the nodes are auto-discovered into the networks catalog (hidden, pending admin review) |
 | v0.33.1 | Dependency security patch — cryptography 44→50, Flask-Cors 5→6, marshmallow 3.23→3.26, requests 2.32→2.33, asyncssh 2.19→2.24, axios →1.20. Clears the bulk of reported CVEs; two advisories documented as accepted/deferred in [`SECURITY-NOTES.md`](SECURITY-NOTES.md). No functional changes |
 | v0.33.0 | Offline-migration CPU-feature fix (stopped-VM migration across hosts with differing CPU features no longer fails on e.g. `missing features: MPX`); hard-stop/force-off action for running VMs; VM detail-page power actions bar; runtime BRANDING toggle (debranded KVMaestro vs. custom branding) |

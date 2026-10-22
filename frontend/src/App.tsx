@@ -150,13 +150,22 @@ function Sidebar() {
         {primaryName && (
           <div className="px-3 pb-2 flex items-center gap-2">
             {username && (
-              <div
-                aria-label={primaryName}
-                title={primaryName}
-                className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-700 text-gray-200 text-xs font-semibold uppercase"
-              >
-                {(primaryName || username || "?").trim().charAt(0)}
-              </div>
+              brand().directoryPhotoBase ? (
+                <img
+                  src={`${brand().directoryPhotoBase}${username}.jpg`}
+                  alt={primaryName}
+                  className="h-8 w-8 rounded-full object-cover flex-shrink-0 bg-gray-800"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                />
+              ) : (
+                <div
+                  aria-label={primaryName}
+                  title={primaryName}
+                  className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-700 text-gray-200 text-xs font-semibold uppercase"
+                >
+                  {(primaryName || username || "?").trim().charAt(0)}
+                </div>
+              )
             )}
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-200 truncate" title={primaryName}>

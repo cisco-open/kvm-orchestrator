@@ -19,6 +19,14 @@ export interface Brand {
   logo: string;
   /** Short blurb source label used in copy (e.g. Metrics page). */
   slug: string;
+  /**
+   * Optional base URL for fetching per-user avatar photos from a corporate
+   * directory, as `${directoryPhotoBase}${username}.jpg`. Leave undefined
+   * (the default) to show an initial-letter avatar and never call out to an
+   * external host. Only set this if you operate a directory that serves photos
+   * keyed by username and you are comfortable the browser will request it.
+   */
+  directoryPhotoBase?: string;
 }
 
 // Default, open-source identity.
@@ -26,12 +34,15 @@ const KVMAESTRO: Brand = {
   name: "KVMaestro",
   logo: "/kvmaestro.svg",
   slug: "KVMaestro",
+  // No directoryPhotoBase — initial-letter avatars, no external photo fetch.
 };
 
 const BRANDS: Record<string, Brand> = {
   kvmaestro: KVMAESTRO,
   // Example custom/white-label brand. Copy this, rename the key, and provide
   // your own logo under frontend/public/. Set config.BRANDING to the key.
+  // Optionally add `directoryPhotoBase: "https://.../photos/"` if you have a
+  // corporate photo directory keyed by username.
   custom: {
     name: "Custom Brand",
     logo: "/custom-logo.svg",
