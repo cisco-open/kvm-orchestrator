@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "kvmaestro.fullname" . }}-migrate
+  name: {{ include "kvm-orchestrator.fullname" . }}-migrate
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
   annotations:
     # post-install / post-upgrade — a pre-install hook can't work here
     # because pre-install runs BEFORE any non-hook resource (ConfigMap,
@@ -56,6 +56,6 @@ spec:
           command: ["alembic", "upgrade", "head"]
           envFrom:
             - configMapRef:
-                name: {{ include "kvmaestro.fullname" . }}-config
+                name: {{ include "kvm-orchestrator.fullname" . }}-config
             - secretRef:
-                name: {{ include "kvmaestro.fullname" . }}-secrets
+                name: {{ include "kvm-orchestrator.fullname" . }}-secrets

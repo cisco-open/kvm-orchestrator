@@ -2,9 +2,9 @@
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  name: {{ include "kvmaestro.fullname" . }}
+  name: {{ include "kvm-orchestrator.fullname" . }}
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
 spec:
   # Selects the shared Istio ingress-gateway pod in istio-system.
   # Standard rke2/Istio installation labels this pod `istio: ingressgateway`.

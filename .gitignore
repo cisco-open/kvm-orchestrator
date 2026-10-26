@@ -41,10 +41,10 @@ htmlcov/
 controller/migrations/versions/__pycache__/
 
 # Helm
-helm/kvmaestro/charts/
+helm/kvm-orchestrator/charts/
 
 # SSH private keys
-keys/kvmaestro
+keys/kvm-orchestrator
 
 # TLS certs, keys, CSRs — never commit private material,
 # and the public cert lives in the istio-system Secret, not the repo.

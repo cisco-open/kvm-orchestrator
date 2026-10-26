@@ -236,7 +236,7 @@ def warn_owner(vm_name: str, owner_username: str | None, *, stage: str,
 
     md = head + "\n\n" + body
     if link:
-        md += f"\n[Renew `{vm_name}` in KVMaestro]({link})"
+        md += f"\n[Renew `{vm_name}` in KVM Orchestrator]({link})"
 
     # DM every recipient (owner + real-tenant members). If there are none
     # (infra VM with no owner), drop a copy in the Ops room so nothing goes
@@ -284,5 +284,5 @@ def ops_delete_request(vm_name: str, owner_username: str | None,
           f"- **Action for an admin:** review and delete it, or renew it if it "
           f"is still needed.\n")
     if vm_link:
-        md += f"\n[Open `{vm_name}` in KVMaestro]({vm_link})"
+        md += f"\n[Open `{vm_name}` in KVM Orchestrator]({vm_link})"
     return _post({"roomId": room, "markdown": md}, "ops:delete_request")

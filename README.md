@@ -1,8 +1,8 @@
-# KVMaestro
+# KVM Orchestrator
 
 **Self-service VM management for your own KVM/libvirt hosts.**
 
-KVMaestro is an open-source control plane for managing virtual machines across a
+KVM Orchestrator is an open-source control plane for managing virtual machines across a
 fleet of KVM/libvirt hypervisors. It gives you a clean web UI and an API for the
 full VM lifecycle — create, start/stop, hard power-off, reboot, suspend, edit,
 live & offline migrate, in-browser VNC console — plus multi-tenancy, LDAP/Active
@@ -15,11 +15,11 @@ libvirt machines) and adds the management, self-service, and automation layer.
 
 ---
 
-## Why KVMaestro?
+## Why KVM Orchestrator?
 
 If you run KVM/libvirt and want a management layer, your options are typically a
 full platform (Proxmox, oVirt/OLVM, OpenStack) or a commercial product
-(Nutanix, VMware). KVMaestro targets a specific gap those don't fill well:
+(Nutanix, VMware). KVM Orchestrator targets a specific gap those don't fill well:
 
 - **Self-service, multi-tenant VM provisioning.** Hand VMs to end users with
   per-tenant visibility, quotas, and an API — not just a cluster-admin console.
@@ -40,10 +40,10 @@ full platform (Proxmox, oVirt/OLVM, OpenStack) or a commercial product
 - **In-browser VNC console** with a stateless, horizontally-scalable proxy, and
   **live + offline migration** (offline migration works across hosts with
   differing CPU features).
-- **Runtime branding.** Ship the default debranded "KVMaestro" identity, or set
+- **Runtime branding.** Ship the default debranded "KVM Orchestrator" identity, or set
   one env var to apply your own name/logo — no rebuild.
 
-**When KVMaestro is the right fit:** cost-sensitive KVM shops, internal/dev
+**When KVM Orchestrator is the right fit:** cost-sensitive KVM shops, internal/dev
 clouds, CI fleets, labs, and service providers that need to *offer* VMs to users
 with automation and tenancy.
 
@@ -58,7 +58,7 @@ platform (Proxmox) or commercial HCI (Nutanix) is the safer choice. See
 
 > ### ⚠️ Tested on Kubernetes only
 >
-> Every component ships as a container, **but KVMaestro has only ever been
+> Every component ships as a container, **but KVM Orchestrator has only ever been
 > deployed and tested on Kubernetes** (via the bundled Helm chart). The
 > Kubernetes/Helm path is the **only supported, validated way to run it.**
 >
@@ -79,7 +79,7 @@ Other things to know before you adopt it:
   no container (LXC) workloads. The HA engine is human-in-the-loop by design.
 - **Config to supply:** you must provide your own container registry, storage
   (Ceph RBD or shared storage for migration without disk copy), an ingress, and
-  TLS. See [`helm/kvmaestro/values/values.example.yaml`](helm/kvmaestro/values/values.example.yaml).
+  TLS. See [`helm/kvm-orchestrator/values/values.example.yaml`](helm/kvm-orchestrator/values/values.example.yaml).
 
 ---
 
@@ -90,13 +90,13 @@ Other things to know before you adopt it:
 2. Copy the example values and fill in your registry, ingress host, storage,
    secrets, and (optionally) LDAP:
    ```sh
-   cp helm/kvmaestro/values/values.example.yaml my-values.yaml
+   cp helm/kvm-orchestrator/values/values.example.yaml my-values.yaml
    # edit my-values.yaml — replace every CHANGE_ME / *.example.com placeholder
    ```
 3. Install:
    ```sh
-   helm upgrade --install kvmaestro helm/kvmaestro \
-     -n kvmaestro --create-namespace -f my-values.yaml
+   helm upgrade --install kvm-orchestrator helm/kvm-orchestrator \
+     -n kvm-orchestrator --create-namespace -f my-values.yaml
    ```
 4. Log in as the bootstrap admin (`admin` / your `ADMIN_PASSWORD`), add your KVM
    hosts, then configure LDAP from the **Users** tab if you want directory auth.
@@ -236,10 +236,10 @@ Four-hop architecture: **browser → nginx → console-proxy → SSH tunnel → 
 - Constructs `wss://host/console-ws?token=…` (or `ws://` on HTTP)
 - Dynamic-imports `@novnc/novnc` — keeps the 182 KB `rfb-*.js` out of the main bundle
 
-**3. WebSocket upgrade (nginx)** — `kvmaestro-ui` nginx config:
+**3. WebSocket upgrade (nginx)** — `kvm-orchestrator-ui` nginx config:
 ```nginx
 location /console-ws {
-    proxy_pass http://kvmaestro-console-proxy:8765;
+    proxy_pass http://kvm-orchestrator-console-proxy:8765;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
@@ -277,7 +277,7 @@ Same-origin trick avoids CORS pain; TLS terminates once at nginx so the proxy it
 | Browser: "VM has no VNC display" | VM is off or no `<graphics type='vnc'/>` in domain XML | `virsh vncdisplay <name>` on the node directly |
 | Browser: "Invalid or expired token" | > 60 s between click and WS open, or token already consumed | Controller logs: token issued? Proxy logs: token validation failed? |
 | Browser: "Connection lost — VM may have shut down" | VNC server gone (VM shut down/crashed) or SSH connection died mid-stream | Proxy logs `VNC session ended: <ip>:<port>` |
-| Browser: connecting forever | nginx not proxying upgrades, or proxy container not running | `docker logs kvmaestro-console-proxy`, check nginx upgrade headers |
+| Browser: connecting forever | nginx not proxying upgrades, or proxy container not running | `docker logs kvm-orchestrator-console-proxy`, check nginx upgrade headers |
 | "No SSH key for this node" 400 from controller | `nodes.ssh_key_id` is NULL or joined `ssh_keys` row is missing | Admin → Nodes → SSH Keys |
 
 ## VM Lifecycle — 1-Year TTL
@@ -354,7 +354,7 @@ its `event` column to `VARCHAR(32)`.
 ## Deployment
 
 > **Kubernetes is the only supported, tested deployment path.** The Helm chart in
-> [`helm/kvmaestro/`](helm/kvmaestro/) is how KVMaestro is run and
+> [`helm/kvm-orchestrator/`](helm/kvm-orchestrator/) is how KVM Orchestrator is run and
 > validated. The Docker notes below are for local development only and are
 > **untested/unsupported**.
 
@@ -369,7 +369,7 @@ What you provide:
   migrate between hosts without copying its disk. Local disks work but offline
   migration then copies the image.
 - Your values file, copied from
-  [`values/values.example.yaml`](helm/kvmaestro/values/values.example.yaml)
+  [`values/values.example.yaml`](helm/kvm-orchestrator/values/values.example.yaml)
   with every `CHANGE_ME` / `*.example.com` placeholder filled in.
 
 Schema is Alembic-managed and runs as a Helm pre-install/pre-upgrade **hook**
@@ -378,27 +378,27 @@ Schema is Alembic-managed and runs as a Helm pre-install/pre-upgrade **hook**
 Fresh install:
 
 ```bash
-cp helm/kvmaestro/values/values.example.yaml my-values.yaml
+cp helm/kvm-orchestrator/values/values.example.yaml my-values.yaml
 # edit my-values.yaml
 
-helm upgrade --install kvmaestro helm/kvmaestro \
-  -n kvmaestro --create-namespace -f my-values.yaml
+helm upgrade --install kvm-orchestrator helm/kvm-orchestrator \
+  -n kvm-orchestrator --create-namespace -f my-values.yaml
 
 # Watch the migrate job before the pods come up
-kubectl -n kvmaestro logs job/kvmaestro-migrate -f
+kubectl -n kvm-orchestrator logs job/kvm-orchestrator-migrate -f
 
 # Health check (adjust for your ingress)
-curl https://kvmaestro.example.com/healthz   # expect: {"status":"ok"}
+curl https://kvm-orchestrator.example.com/healthz   # expect: {"status":"ok"}
 ```
 
 Upgrade (the migrate hook re-runs, applying any new revisions before rolling
 pods):
 
 ```bash
-helm upgrade kvmaestro helm/kvmaestro -n kvmaestro -f my-values.yaml
+helm upgrade kvm-orchestrator helm/kvm-orchestrator -n kvm-orchestrator -f my-values.yaml
 ```
 
-See [`helm/kvmaestro/DEPLOY.md`](helm/kvmaestro/DEPLOY.md) for a fuller
+See [`helm/kvm-orchestrator/DEPLOY.md`](helm/kvm-orchestrator/DEPLOY.md) for a fuller
 runbook (data import, cutover, rotation).
 
 ### Local development with Docker (UNSUPPORTED / UNTESTED)
@@ -428,9 +428,9 @@ Images (retag for your registry):
 
 | Component | Dockerfile | Image |
 |---|---|---|
-| API / workers | `controller/Dockerfile` | `your-registry.example.com/kvmaestro/api` |
-| UI | `frontend/Dockerfile` | `your-registry.example.com/kvmaestro/ui` |
-| Console proxy | `console-proxy/Dockerfile` | `your-registry.example.com/kvmaestro/console-proxy` |
+| API / workers | `controller/Dockerfile` | `your-registry.example.com/kvm-orchestrator/api` |
+| UI | `frontend/Dockerfile` | `your-registry.example.com/kvm-orchestrator/ui` |
+| Console proxy | `console-proxy/Dockerfile` | `your-registry.example.com/kvm-orchestrator/console-proxy` |
 
 A **version-consistency gate** is enforced: all six version locations must match
 before a build is accepted — `controller/app/version.py`,
@@ -458,16 +458,16 @@ Jenkins pipeline is included at `database/Jenkinsfile.backup-db`.
 ### Kubernetes: pods not coming up
 
 ```bash
-kubectl -n kvmaestro get pods
-kubectl -n kvmaestro describe pod <pod>       # events tell most stories
-kubectl -n kvmaestro logs <pod> --previous    # if crashlooping
+kubectl -n kvm-orchestrator get pods
+kubectl -n kvm-orchestrator describe pod <pod>       # events tell most stories
+kubectl -n kvm-orchestrator logs <pod> --previous    # if crashlooping
 ```
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| API pods `CrashLoopBackOff` on fresh install | Migrate job hasn't finished — the probe hits `/healthz` before Alembic tables exist | Wait for the migrate job to complete: `kubectl -n kvmaestro logs job/kvmaestro-migrate` |
+| API pods `CrashLoopBackOff` on fresh install | Migrate job hasn't finished — the probe hits `/healthz` before Alembic tables exist | Wait for the migrate job to complete: `kubectl -n kvm-orchestrator logs job/kvm-orchestrator-migrate` |
 | Migrate job never runs | Helm hook didn't fire | `helm upgrade` again with the same values; the migrate hook re-runs on upgrades |
-| MySQL pod `Pending` | PVC not bound — storage class/provisioner issue | `kubectl describe pvc -n kvmaestro` shows the underlying reason |
+| MySQL pod `Pending` | PVC not bound — storage class/provisioner issue | `kubectl describe pvc -n kvm-orchestrator` shows the underlying reason |
 | `/healthz` 200 via `port-forward` but 404 via ingress | Ingress (Gateway/VirtualService) not applied, or DNS not pointing at the ingress VIP | Check your ingress resources and DNS; use `curl --resolve` to bypass DNS while diagnosing |
 | Login returns "LDAP error" | Bind creds wrong or LDAP unreachable from the cluster | Re-check the LDAP config in the **Users** tab; test a bind from an ephemeral pod |
 
@@ -478,8 +478,8 @@ has data, only a live `ALTER USER` changes it. **Order matters** — rotate live
 first, then update your values file, then `helm upgrade`:
 
 ```bash
-MYSQL_POD=$(kubectl -n kvmaestro get pod -l app.kubernetes.io/component=mysql -o name)
-kubectl -n kvmaestro exec $MYSQL_POD -- \
+MYSQL_POD=$(kubectl -n kvm-orchestrator get pod -l app.kubernetes.io/component=mysql -o name)
+kubectl -n kvm-orchestrator exec $MYSQL_POD -- \
   mysql -u root -p<OLD_PW> -e "
     ALTER USER 'root'@'%'         IDENTIFIED BY '<NEW_PW>';
     ALTER USER 'root'@'localhost' IDENTIFIED BY '<NEW_PW>';
@@ -498,10 +498,11 @@ architecture and its troubleshooting table.
 
 | Version | Changes |
 |---|---|
+| v0.35.0 | Project renamed from KVMaestro to **KVM Orchestrator** (`kvm-orchestrator`) — identity strings, brand preset/key, logo asset, Helm chart name, and all docs/comments updated. No functional change |
 | v0.34.1 | Configurable per-brand user avatars — by default the sidebar shows an initial-letter avatar and never fetches from an external host; set `Brand.directoryPhotoBase` in `branding.ts` only if you run a corporate photo directory keyed by username |
 | v0.34.0 | HA reliability — Readmit now also recovers nodes in `failed` status (not just `fenced`); a mass-failure circuit breaker prevents a controller-side blip from flagging the whole fleet at once; nodes flagged `failed` auto-recover to `online` once they heartbeat again (fenced nodes still require guarded admin readmit); and OVS VLAN bridges present on the nodes are auto-discovered into the networks catalog (hidden, pending admin review) |
 | v0.33.1 | Dependency security patch — cryptography 44→50, Flask-Cors 5→6, marshmallow 3.23→3.26, requests 2.32→2.33, asyncssh 2.19→2.24, axios →1.20. Clears the bulk of reported CVEs; two advisories documented as accepted/deferred in [`SECURITY-NOTES.md`](SECURITY-NOTES.md). No functional changes |
-| v0.33.0 | Offline-migration CPU-feature fix (stopped-VM migration across hosts with differing CPU features no longer fails on e.g. `missing features: MPX`); hard-stop/force-off action for running VMs; VM detail-page power actions bar; runtime BRANDING toggle (debranded KVMaestro vs. custom branding) |
+| v0.33.0 | Offline-migration CPU-feature fix (stopped-VM migration across hosts with differing CPU features no longer fails on e.g. `missing features: MPX`); hard-stop/force-off action for running VMs; VM detail-page power actions bar; runtime BRANDING toggle (debranded KVM Orchestrator vs. custom branding) |
 | v0.32.0 | Open-source auth: bootstrap admin account + DB-configured LDAP (admin Users tab); VM column picker; VM detail page |
 | v0.30.0 | VM Lifecycle / 1-year TTL — per-VM term with owner + tenant-group warnings, one-click renew, restart-block at expiry, and an Ops delete request (never auto-deletes); admin exempt + runtime on/off |
 | v0.17.0 | Kubernetes deployment via Helm — Alembic baseline migration for data-safe upgrades, unauthenticated `/healthz` for probes |

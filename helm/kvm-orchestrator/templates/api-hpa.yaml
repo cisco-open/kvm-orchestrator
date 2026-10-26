@@ -1,14 +1,14 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "kvmaestro.fullname" . }}-api
+  name: {{ include "kvm-orchestrator.fullname" . }}-api
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "kvmaestro.fullname" . }}-api
+    name: {{ include "kvm-orchestrator.fullname" . }}-api
   minReplicas: {{ .Values.hpa.api.minReplicas }}
   maxReplicas: {{ .Values.hpa.api.maxReplicas }}
   metrics:

@@ -59,7 +59,7 @@ def _node_has_rbd_pool(node_id: int) -> bool:
     """Return True if the node can back an RBD-backed VM disk.
 
     Correct signal: a libvirt storage pool of type ``rbd`` is DEFINED on
-    the node — whether active or not. kvmaestro provisions disks via
+    the node — whether active or not. kvm-orchestrator provisions disks via
     raw ``rbd`` CLI against the Ceph pool, so an rbd pool that is merely
     *inactive* (e.g. failed to autostart after a reboot before Ceph was
     ready) still means the node is RBD-capable. Keying off active-only

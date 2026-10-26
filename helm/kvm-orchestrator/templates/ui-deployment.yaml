@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kvmaestro.fullname" . }}-ui
+  name: {{ include "kvm-orchestrator.fullname" . }}-ui
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: ui
 spec:
   replicas: {{ .Values.replicaCount.ui }}
   selector:
     matchLabels:
-      {{- include "kvmaestro.selectorLabels" . | nindent 6 }}
+      {{- include "kvm-orchestrator.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: ui
   template:
     metadata:
       labels:
-        {{- include "kvmaestro.selectorLabels" . | nindent 8 }}
+        {{- include "kvm-orchestrator.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: ui
     spec:
       {{- with .Values.imagePullSecrets }}
@@ -30,10 +30,10 @@ spec:
             # "TEST ENVIRONMENT" banner when set to "test". Defaults to live.
             - name: ENVIRONMENT
               value: {{ .Values.config.ENVIRONMENT | default "live" | quote }}
-            # Brand preset: "kvmaestro" (default, debranded open-source) or
+            # Brand preset: "kvm-orchestrator" (default, debranded open-source) or
             # or a custom white-label preset (see frontend/src/branding.ts).
             - name: BRANDING
-              value: {{ .Values.config.BRANDING | default "kvmaestro" | quote }}
+              value: {{ .Values.config.BRANDING | default "kvm-orchestrator" | quote }}
           ports:
             - containerPort: 80
               protocol: TCP

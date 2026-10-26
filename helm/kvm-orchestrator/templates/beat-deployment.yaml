@@ -2,20 +2,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "kvmaestro.fullname" . }}-beat
+  name: {{ include "kvm-orchestrator.fullname" . }}-beat
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: beat
 spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "kvmaestro.selectorLabels" . | nindent 6 }}
+      {{- include "kvm-orchestrator.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: beat
   template:
     metadata:
       labels:
-        {{- include "kvmaestro.selectorLabels" . | nindent 8 }}
+        {{- include "kvm-orchestrator.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: beat
     spec:
       {{- with .Values.imagePullSecrets }}
@@ -29,9 +29,9 @@ spec:
           command: ["celery", "-A", "celery_worker.celery", "beat", "--loglevel=info"]
           envFrom:
             - configMapRef:
-                name: {{ include "kvmaestro.fullname" . }}-config
+                name: {{ include "kvm-orchestrator.fullname" . }}-config
             - secretRef:
-                name: {{ include "kvmaestro.fullname" . }}-secrets
+                name: {{ include "kvm-orchestrator.fullname" . }}-secrets
           resources:
             requests:
               cpu: 50m

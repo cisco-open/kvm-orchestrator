@@ -7,8 +7,8 @@ import libvirt
 
 logger = logging.getLogger("wvc-agent.libvirt")
 
-WVC_NAMESPACE = "https://kvmaestro.local/xmlns/instance/1.0"
-MANAGED_BY_TAG = "kvmaestro"
+WVC_NAMESPACE = "https://kvm-orchestrator.local/xmlns/instance/1.0"
+MANAGED_BY_TAG = "kvm-orchestrator"
 
 
 def _get_connection() -> libvirt.virConnect:
@@ -20,7 +20,7 @@ def _get_connection() -> libvirt.virConnect:
 
 
 def _is_managed(domain: libvirt.virDomain) -> bool:
-    """Check if a domain is managed by kvmaestro (has our metadata tag)."""
+    """Check if a domain is managed by kvm-orchestrator (has our metadata tag)."""
     try:
         xml_str = domain.XMLDesc()
         root = ET.fromstring(xml_str)
@@ -37,7 +37,7 @@ def _is_managed(domain: libvirt.virDomain) -> bool:
 
 
 def list_managed_vms() -> list[dict]:
-    """List all VMs managed by kvmaestro on this node."""
+    """List all VMs managed by kvm-orchestrator on this node."""
     conn = _get_connection()
     vms = []
     try:
@@ -80,7 +80,7 @@ def start_vm(name: str) -> dict:
     try:
         domain = conn.lookupByName(name)
         if not _is_managed(domain):
-            return {"status": "error", "message": "VM not managed by kvmaestro"}
+            return {"status": "error", "message": "VM not managed by kvm-orchestrator"}
         domain.create()
         return {"status": "ok"}
     except libvirt.libvirtError as e:
@@ -95,7 +95,7 @@ def stop_vm(name: str) -> dict:
     try:
         domain = conn.lookupByName(name)
         if not _is_managed(domain):
-            return {"status": "error", "message": "VM not managed by kvmaestro"}
+            return {"status": "error", "message": "VM not managed by kvm-orchestrator"}
         domain.shutdown()
         return {"status": "ok"}
     except libvirt.libvirtError as e:
@@ -110,7 +110,7 @@ def destroy_vm(name: str) -> dict:
     try:
         domain = conn.lookupByName(name)
         if not _is_managed(domain):
-            return {"status": "error", "message": "VM not managed by kvmaestro"}
+            return {"status": "error", "message": "VM not managed by kvm-orchestrator"}
         domain.destroy()
         return {"status": "ok"}
     except libvirt.libvirtError as e:
@@ -125,7 +125,7 @@ def reboot_vm(name: str) -> dict:
     try:
         domain = conn.lookupByName(name)
         if not _is_managed(domain):
-            return {"status": "error", "message": "VM not managed by kvmaestro"}
+            return {"status": "error", "message": "VM not managed by kvm-orchestrator"}
         domain.reboot()
         return {"status": "ok"}
     except libvirt.libvirtError as e:
@@ -135,7 +135,7 @@ def reboot_vm(name: str) -> dict:
 
 
 def _inject_metadata(xml: str, vm_id: str) -> str:
-    """Inject kvmaestro management metadata into domain XML."""
+    """Inject kvm-orchestrator management metadata into domain XML."""
     root = ET.fromstring(xml)
     metadata = root.find("metadata")
     if metadata is None:

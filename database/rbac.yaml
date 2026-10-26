@@ -3,7 +3,7 @@
 #
 # The your-ci-sa ServiceAccount lives in namespace your-ci-namespace (shared
 # with the self-service Jenkins jobs). This Role + RoleBinding grants that SA
-# minimum permissions in the kvmaestro namespace to read the MySQL
+# minimum permissions in the kvm-orchestrator namespace to read the MySQL
 # StatefulSet, resolve its pod, and `kubectl exec` into it for mysqldump.
 #
 # Apply once:
@@ -13,7 +13,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: jenkins-mysqldump
-  namespace: kvmaestro
+  namespace: kvm-orchestrator
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -29,7 +29,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: jenkins-mysqldump
-  namespace: kvmaestro
+  namespace: kvm-orchestrator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role

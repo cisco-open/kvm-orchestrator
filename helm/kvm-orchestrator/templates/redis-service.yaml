@@ -4,7 +4,7 @@ kind: Service
 metadata:
   name: redis
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: redis
 spec:
   type: ClusterIP
@@ -12,6 +12,6 @@ spec:
     - port: 6379
       targetPort: 6379
   selector:
-    {{- include "kvmaestro.selectorLabels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: redis
 {{- end }}

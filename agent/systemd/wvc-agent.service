@@ -1,5 +1,5 @@
 [Unit]
-Description=KVMaestro Node Agent
+Description=KVM Orchestrator Node Agent
 After=network-online.target libvirtd.service
 Wants=network-online.target
 

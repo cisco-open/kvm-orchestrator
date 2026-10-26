@@ -1,4 +1,4 @@
-# Prometheus scrape config for the kvmaestro controller.
+# Prometheus scrape config for the kvm-orchestrator controller.
 #
 # There are two deployment shapes and the scrape story is different for each.
 # The canonical Prometheus is the one running in the rke2-k8s cluster at
@@ -26,7 +26,7 @@
 # - The endpoint is unauthenticated by design — protect it at the network
 #   layer (only monitoring subnets should reach dev-host:8000).
 
-- job_name: kvmaestro-docker-sandbox
+- job_name: kvm-orchestrator-docker-sandbox
   scrape_interval: 15s
   scrape_timeout: 10s
   metrics_path: /metrics
@@ -39,14 +39,14 @@
         component: controller
 
 # =============================================================================
-# 2. k8s cluster (kvmaestro.example.com, rke2-k8s)
+# 2. k8s cluster (kvm-orchestrator.example.com, rke2-k8s)
 # =============================================================================
 # NO scrape_configs edit needed.
 #
 # The in-cluster Prometheus already ships a generic `kubernetes-pods` scrape
 # job that auto-discovers any pod annotated with `prometheus.io/scrape=true`.
 # The v0.22 chart adds those annotations to the api Deployment pod template
-# (see `helm/kvmaestro/templates/api-deployment.yaml`):
+# (see `helm/kvm-orchestrator/templates/api-deployment.yaml`):
 #
 #   annotations:
 #     prometheus.io/scrape: "true"
@@ -62,14 +62,14 @@
 #
 # The `kubernetes-pods` relabel_configs rewrite `__address__` to
 # `<pod-ip>:8000`, so the target list becomes e.g.:
-#   10.42.4.137:8000  (pod kvmaestro-kvmaestro-api-XXXX)
-#   10.42.5.96:8000   (pod kvmaestro-kvmaestro-api-YYYY)
+#   10.42.4.137:8000  (pod kvm-orchestrator-kvm-orchestrator-api-XXXX)
+#   10.42.5.96:8000   (pod kvm-orchestrator-kvm-orchestrator-api-YYYY)
 #
 # Labels applied automatically by the existing job:
-#   - `kubernetes_namespace=kvmaestro`
+#   - `kubernetes_namespace=kvm-orchestrator`
 #   - `kubernetes_pod_name=<pod>`
 #   - all `app.kubernetes.io/*` labels via `labelmap` (component=api,
-#     name=kvmaestro, etc.)
+#     name=kvm-orchestrator, etc.)
 #
 # Verify (from inside the cluster):
 #   kubectl -n monitoring-scrape port-forward svc/prometheus-deployment 9090
@@ -77,7 +77,7 @@
 #   the `kubernetes-pods` job in state=up.
 #
 # Or PromQL:
-#   up{app_kubernetes_io_component="api", kubernetes_namespace="kvmaestro"}
+#   up{app_kubernetes_io_component="api", kubernetes_namespace="kvm-orchestrator"}
 #
 # If you ever want to scrape from an off-cluster Prometheus instead, you'll
 # need to (a) route `/metrics` through the Istio VirtualService (currently

@@ -153,4 +153,4 @@ def downgrade() -> None:
     # legitimate ODaaSE product-tenant VMs. Callers that need the exact
     # pre-upgrade VM assignment must restore from the nightly mysqldump
     # backup at backup.example.com:/data/backup/
-    # kvmaestro/.
+    # kvm-orchestrator/.

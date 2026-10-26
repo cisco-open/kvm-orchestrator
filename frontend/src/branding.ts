@@ -1,7 +1,7 @@
 // Brand presets. Selected at runtime by window.__ENV__.BRANDING (written by the
 // UI container entrypoint from the BRANDING pod env var — see public/env.js +
 // docker-entrypoint.sh). This lets the SAME image ship either as the default
-// "KVMaestro" build or as your own white-labelled build, purely by namespace
+// "KVM Orchestrator" build or as your own white-labelled build, purely by namespace
 // config — no rebrand-rebuild.
 //
 // To add your own brand: drop a logo in frontend/public/ (e.g. custom-logo.svg),
@@ -30,15 +30,15 @@ export interface Brand {
 }
 
 // Default, open-source identity.
-const KVMAESTRO: Brand = {
-  name: "KVMaestro",
-  logo: "/kvmaestro.svg",
-  slug: "KVMaestro",
+const KVM_ORCHESTRATOR: Brand = {
+  name: "KVM Orchestrator",
+  logo: "/kvm-orchestrator.svg",
+  slug: "KVM Orchestrator",
   // No directoryPhotoBase — initial-letter avatars, no external photo fetch.
 };
 
 const BRANDS: Record<string, Brand> = {
-  kvmaestro: KVMAESTRO,
+  "kvm-orchestrator": KVM_ORCHESTRATOR,
   // Example custom/white-label brand. Copy this, rename the key, and provide
   // your own logo under frontend/public/. Set config.BRANDING to the key.
   // Optionally add `directoryPhotoBase: "https://.../photos/"` if you have a
@@ -50,7 +50,7 @@ const BRANDS: Record<string, Brand> = {
   },
 };
 
-const DEFAULT_BRAND = "kvmaestro";
+const DEFAULT_BRAND = "kvm-orchestrator";
 
 /** Resolve the active brand key from runtime env, falling back to the default. */
 export function brandKey(): string {
@@ -60,7 +60,7 @@ export function brandKey(): string {
 
 /** The active brand preset. */
 export function brand(): Brand {
-  return BRANDS[brandKey()] ?? KVMAESTRO;
+  return BRANDS[brandKey()] ?? KVM_ORCHESTRATOR;
 }
 
 /**

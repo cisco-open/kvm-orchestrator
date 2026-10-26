@@ -27,7 +27,7 @@ export function isTestEnv(): boolean {
 /**
  * App display name. Driven by the active brand (BRANDING), with a "Test"
  * prefix overlaid when ENVIRONMENT=test so a test instance of any brand is
- * clearly marked (e.g. "Test KVMaestro", "Test Custom Brand").
+ * clearly marked (e.g. "Test KVM Orchestrator", "Test Custom Brand").
  */
 export function appName(): string {
   const name = brand().name;

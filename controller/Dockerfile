@@ -1,7 +1,7 @@
-# docker build -t kvmaestro/api:latest .
+# docker build -t kvm-orchestrator/api:latest .
 # v0.26.6 — Fix rbd "error opening pool rbdpool" on Advanced/blank + existing-disk creates: _resolve_ceph_pool translates libvirt pool name (rbdpool) to Ceph pool (libvirt-pool) before raw rbd ops. Builds on v0.26.5 os/boot disk-template fix.
 # v0.26.5 — Fix Windows/os-boot quick-create: _build_disk_xml strips cloned per-device <boot> from the disk template (clashed with os-level <boot dev>). Seen on daas-kvm-c220-04.
-# v0.26.4 — Placement fix: a DEFINED-but-inactive libvirt rbd pool no longer excludes a node from require_rbd placement (kvmaestro uses raw rbd CLI, not the libvirt pool). Fixes spurious "No eligible host". Fail-open on inconclusive SSH probe.
+# v0.26.4 — Placement fix: a DEFINED-but-inactive libvirt rbd pool no longer excludes a node from require_rbd placement (kvm-orchestrator uses raw rbd CLI, not the libvirt pool). Fixes spurious "No eligible host". Fail-open on inconclusive SSH probe.
 # v0.26.3 — Deployment-error observability: VM-create failures now name the target node in the user-facing error message and log the requesting user (CEC) + node (hostname/id) at the API edge, on top of the v0.24.1 per-branch service logging. UI-only label swap (Quick Create->Create VM, Create VM->Advanced Create VM) + NodeDetail storage-pool panel from live discovery.
 # v0.26.2 — Fix: could not create the first RBD VM on a freshly-added node (empty node had no existing VM to sample the Ceph disk-auth template from → empty template → rbd ran with no keyring → create failed). Discovery now synthesizes the auth template from the node's rbd pool definition (virsh pool-dumpxml) as a fallback; VM-sampling stays primary. Also surfaces netfs storage pools (previously dropped).
 # v0.26.1 — Fix: VM create/attach against a non-RBD libvirt pool (a 'dir' pool such as 'default' or 'nvram') failed with the cryptic 'rbd: error opening pool: (2) No such file or directory' from Ceph, because the create paths only validated the pool NAME existed, never its TYPE, before running raw rbd commands. Added _validate_rbd_pool guard to blank + existing-disk create paths (clear rejection listing valid rbd pools); frontend filters disk-pool selectors to rbd-type only. ISO pool selectors unchanged.
@@ -12,7 +12,7 @@
 
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.version="v0.34.1" \
+LABEL org.opencontainers.image.version="v0.35.0" \
       org.opencontainers.image.description="VM-HA v2 — human-in-the-loop failover: detect+confirm dead node (Ceph watcher partition guard), mark failed + notify (no auto-fence), admin fences via button, interlock blocks recovery until fenced, rebuild from captured XML onto arch-matched target, readmit safety pre-flight + full blocklist cleanup, admin recovery checklist."
 
 # Prometheus multiprocess-mode shard directory. MUST be set before any

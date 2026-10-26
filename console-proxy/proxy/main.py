@@ -73,7 +73,7 @@ async def main():
     loop.add_signal_handler(signal.SIGINT, shutdown)
 
     async with websockets.serve(handler, LISTEN_HOST, LISTEN_PORT):
-        logger.info("kvmaestro-console-proxy %s — %s", VERSION, RELEASE_NOTE)
+        logger.info("kvm-orchestrator-console-proxy %s — %s", VERSION, RELEASE_NOTE)
         logger.info("Console proxy listening on %s:%d", LISTEN_HOST, LISTEN_PORT)
         await stop
 

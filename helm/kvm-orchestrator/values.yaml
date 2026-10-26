@@ -1,4 +1,4 @@
-# Default values for kvmaestro
+# Default values for kvm-orchestrator
 
 # Optional registry pull secrets (list of { name: <secret> }). Empty by default
 # because prod pulls via node-level docker creds; a fresh namespace (e.g.
@@ -14,15 +14,15 @@ replicaCount:
 
 image:
   api:
-    repository: kvmaestro/api
+    repository: kvm-orchestrator/api
     tag: latest
     pullPolicy: IfNotPresent
   consoleProxy:
-    repository: kvmaestro/console-proxy
+    repository: kvm-orchestrator/console-proxy
     tag: latest
     pullPolicy: IfNotPresent
   ui:
-    repository: kvmaestro/ui
+    repository: kvm-orchestrator/ui
     tag: latest
     pullPolicy: IfNotPresent
 
@@ -35,14 +35,14 @@ istio:
   # Label used to select the ingress-gateway pod. Default rke2/Istio install
   # labels the shared gateway pod with `istio: ingressgateway`.
   gatewaySelector: ingressgateway
-  host: kvmaestro.example.com
+  host: kvm-orchestrator.example.com
   # 80 → 443 permanent redirect handled by Envoy on the gateway.
   # Set to false if you need a plain-HTTP smoke-test window.
   httpRedirect: true
   tls:
     enabled: true
     # Secret MUST live in the istio-system namespace, not here.
-    secretName: kvmaestro-tls
+    secretName: kvm-orchestrator-tls
   # Route timeouts. API long-poll and console WebSocket both need generous
   # values; the API default matches long-running libvirt operations.
   apiTimeout: 3600s
@@ -50,9 +50,9 @@ istio:
 
 config:
   # UI brand preset written into the runtime env.js by the UI entrypoint:
-  #   "kvmaestro"      -> default, debranded open-source build (KVMaestro)
+  #   "kvm-orchestrator"      -> default, debranded open-source build (KVM Orchestrator)
   #   "custom"    -> example white-label build (your name + logo)
-  BRANDING: "kvmaestro"
+  BRANDING: "kvm-orchestrator"
   JWT_ACCESS_TOKEN_EXPIRES: "900"
   JWT_REFRESH_TOKEN_EXPIRES: "604800"
   # LDAP below is now only a one-time SEED. On first migrate these are copied
@@ -71,7 +71,7 @@ config:
 
 secrets:
   FLASK_SECRET_KEY: ""
-  DATABASE_URL: "mysql+pymysql://kvmaestro:changeme@mysql:3306/kvmaestro"
+  DATABASE_URL: "mysql+pymysql://kvm-orchestrator:changeme@mysql:3306/kvm-orchestrator"
   REDIS_URL: "redis://redis:6379/0"
   JWT_SECRET_KEY: ""
   # LDAP bind creds below are seed-only (see config note above). Once set in

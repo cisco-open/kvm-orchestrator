@@ -2598,7 +2598,7 @@
   "schemaVersion": 36,
   "style": "dark",
   "tags": [
-    "kvmaestro",
+    "kvm-orchestrator",
     "kvm"
   ],
   "templating": {
@@ -2610,7 +2610,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "kvmaestro",
+  "title": "kvm-orchestrator",
   "uid": "wvc-main",
   "version": 3,
   "weekStart": "",

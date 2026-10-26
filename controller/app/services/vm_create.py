@@ -39,7 +39,7 @@ from .tenant_service import SHARED_TENANT_ID
 logger = logging.getLogger("wvc.vm-create")
 
 # Ensure our namespace prefix is consistent when serialising XML
-ET.register_namespace("wvc", "https://kvmaestro")
+ET.register_namespace("wvc", "https://kvm-orchestrator")
 
 # ---------------------------------------------------------------------------
 # Python script executed on KVM node via SSH stdin to discover resources.
@@ -385,7 +385,7 @@ def node_has_defined_rbd_pool(node_id: int) -> bool | None:
     """Return True if the node has a libvirt storage pool of type ``rbd``
     that is DEFINED — whether it is currently active or not.
 
-    This is the correct RBD-capability signal for placement. kvmaestro
+    This is the correct RBD-capability signal for placement. kvm-orchestrator
     provisions VM disks with raw ``rbd`` CLI against the Ceph pool (it does
     NOT use the libvirt-managed pool for disk I/O), so an rbd pool that is
     merely *inactive* (e.g. libvirt failed to autostart it after a reboot
@@ -539,7 +539,7 @@ def _build_domain_xml(name: str, vm_uuid: str, vcpus: int, ram_mb: int,
   <name>{name}</name>
   <uuid>{vm_uuid}</uuid>
   <metadata>
-    <wvc:managed-by xmlns:wvc="https://kvmaestro">kvmaestro</wvc:managed-by>
+    <wvc:managed-by xmlns:wvc="https://kvm-orchestrator">kvm-orchestrator</wvc:managed-by>
   </metadata>
   <memory unit='MiB'>{ram_mb}</memory>
   <currentMemory unit='MiB'>{ram_mb}</currentMemory>
@@ -588,7 +588,7 @@ def _clone_modify_xml(source_xml: str, new_name: str, new_uuid: str,
             root.remove(el)
 
     # Ensure managed-by metadata
-    ns = "https://kvmaestro"
+    ns = "https://kvm-orchestrator"
     meta = root.find("metadata")
     if meta is None:
         meta = ET.SubElement(root, "metadata")
@@ -596,7 +596,7 @@ def _clone_modify_xml(source_xml: str, new_name: str, new_uuid: str,
         if child.tag == f"{{{ns}}}managed-by":
             meta.remove(child)
     wvc = ET.SubElement(meta, f"{{{ns}}}managed-by")
-    wvc.text = "kvmaestro"
+    wvc.text = "kvm-orchestrator"
 
     # vCPUs
     vcpu_el = root.find("vcpu")
@@ -1481,7 +1481,7 @@ def _build_windows_domain_xml(name: str, vm_uuid: str, vcpus: int, ram_mb: int,
   <name>{name}</name>
   <uuid>{vm_uuid}</uuid>
   <metadata>
-    <wvc:managed-by xmlns:wvc="https://kvmaestro">kvmaestro</wvc:managed-by>
+    <wvc:managed-by xmlns:wvc="https://kvm-orchestrator">kvm-orchestrator</wvc:managed-by>
   </metadata>
   <memory unit='MiB'>{ram_mb}</memory>
   <currentMemory unit='MiB'>{ram_mb}</currentMemory>

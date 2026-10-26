@@ -1,4 +1,4 @@
-// kvmaestro console-proxy (wvc-console-proxy) Jenkins pipeline
+// kvm-orchestrator console-proxy (wvc-console-proxy) Jenkins pipeline
 //
 // See controller/Jenkinsfile for the full rationale of the version-consistency
 // gate. This file omits the Alembic gate — the console-proxy has no database
@@ -16,7 +16,7 @@ pipeline {
     }
 
     environment {
-        REGISTRY       = 'your-registry.example.com/kvmaestro'
+        REGISTRY       = 'your-registry.example.com/kvm-orchestrator'
         REGISTRY_CREDS = 'your-registry.example.com'
         IMAGE_NAME     = 'wvc-console-proxy'
         BUILD_CONTEXT  = 'console-proxy'

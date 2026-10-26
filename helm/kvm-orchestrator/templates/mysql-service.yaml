@@ -4,7 +4,7 @@ kind: Service
 metadata:
   name: mysql
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: mysql
 spec:
   type: ClusterIP
@@ -12,6 +12,6 @@ spec:
     - port: 3306
       targetPort: 3306
   selector:
-    {{- include "kvmaestro.selectorLabels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: mysql
 {{- end }}

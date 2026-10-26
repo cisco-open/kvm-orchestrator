@@ -4,7 +4,7 @@ Revision ID: 0001
 Revises:
 Create Date: 2026-07-02
 
-Baseline schema for kvmaestro v0.17.0.
+Baseline schema for kvm-orchestrator v0.17.0.
 
 This revision snapshots the exact production Docker schema at v0.16.x so that
 Alembic can carry forward from a known state. It creates the eight core tables:

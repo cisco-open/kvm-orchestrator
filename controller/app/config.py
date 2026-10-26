@@ -8,7 +8,7 @@ class Config:
 
     SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "change-me-in-production")
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "mysql+pymysql://root:root@localhost:3306/kvmaestro"
+        "DATABASE_URL", "mysql+pymysql://root:root@localhost:3306/kvm-orchestrator"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
@@ -111,7 +111,7 @@ class Config:
     WEBEX_BOT_TOKEN = os.environ.get("WEBEX_BOT_TOKEN", "")
     WEBEX_HA_ROOM_ID = os.environ.get("WEBEX_HA_ROOM_ID", "")
     WEBEX_DEEP_LINK_BASE = os.environ.get(
-        "WEBEX_DEEP_LINK_BASE", "https://kvmaestro.example.com")
+        "WEBEX_DEEP_LINK_BASE", "https://kvm-orchestrator.example.com")
 
     # DNS domain suffix appended to guest hostnames to form their FQDN in
     # cloud-init (e.g. "<vmname>.<VM_DOMAIN_SUFFIX>"). Leave blank to emit no

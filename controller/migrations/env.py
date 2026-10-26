@@ -19,7 +19,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "mysql+pymysql://root:root@localhost:3306/kvmaestro"
+    "DATABASE_URL", "mysql+pymysql://root:root@localhost:3306/kvm-orchestrator"
 )
 
 config = context.config

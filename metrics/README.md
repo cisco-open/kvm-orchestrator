@@ -1,4 +1,4 @@
-# kvmaestro metrics — Grafana dashboard
+# kvm-orchestrator metrics — Grafana dashboard
 
 This directory ships the observability side-artefacts for the metrics endpoint
 introduced in **v0.16.0** (see `controller/app/metrics.py`).
@@ -23,7 +23,7 @@ Append the contents of `prometheus-scrape.yml` to the `scrape_configs:` list in
 `prometheus.yml` and reload (`kill -HUP $(pidof prometheus)` or `systemctl reload prometheus`).
 
 Sanity-check by hitting `http://<prometheus>:9090/api/v1/targets` and looking
-for the `kvmaestro` job in `state=up`.
+for the `kvm-orchestrator` job in `state=up`.
 
 ## Importing the dashboard
 
@@ -33,7 +33,7 @@ for the `kvmaestro` job in `state=up`.
 2. Left sidebar → **Dashboards** → **New** → **Import**
 3. Click **Upload JSON file**, pick `grafana-dashboard.json`
 4. On the import screen leave the Prometheus datasource as `Prometheus-scrape` (uid `o_-9w1Tvk` — already baked into the file)
-5. Click **Import**. Dashboard lands at uid `wvc-main`, path `/d/wvc-main/kvmaestro`.
+5. Click **Import**. Dashboard lands at uid `wvc-main`, path `/d/wvc-main/kvm-orchestrator`.
 
 ### Option B — API (scriptable)
 
@@ -80,13 +80,13 @@ These aren't ingested by Prometheus — copy into an `alerts.yml` if wanted:
 
 ```yaml
 groups:
-  - name: kvmaestro
+  - name: kvm-orchestrator
     rules:
       - alert: WvcControllerDown
-        expr: up{job="kvmaestro"} == 0
+        expr: up{job="kvm-orchestrator"} == 0
         for: 2m
         annotations:
-          summary: "kvmaestro /metrics has been unreachable for 2 minutes"
+          summary: "kvm-orchestrator /metrics has been unreachable for 2 minutes"
 
       - alert: WvcNodesFewerThanExpected
         expr: sum(wvc_nodes{status="online"}) < 4

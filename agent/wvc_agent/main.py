@@ -12,7 +12,7 @@ logger = logging.getLogger("wvc-agent")
 
 def main():
     """Main entry point for wvc-agent."""
-    parser = argparse.ArgumentParser(description="KVMaestro Node Agent")
+    parser = argparse.ArgumentParser(description="KVM Orchestrator Node Agent")
     parser.add_argument(
         "-c",
         "--config",

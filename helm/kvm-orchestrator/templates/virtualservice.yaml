@@ -2,16 +2,16 @@
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: {{ include "kvmaestro.fullname" . }}
+  name: {{ include "kvm-orchestrator.fullname" . }}
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
 spec:
   hosts:
     - {{ .Values.istio.host | quote }}
   gateways:
     # References the Gateway resource in the same namespace as this
     # VirtualService (unqualified name = same-namespace lookup).
-    - {{ include "kvmaestro.fullname" . }}
+    - {{ include "kvm-orchestrator.fullname" . }}
   http:
     # ------------------------------------------------------------------
     # /api/*  →  Flask API on gunicorn (:8000)
@@ -23,7 +23,7 @@ spec:
             exact: /api
       route:
         - destination:
-            host: kvmaestro-api
+            host: kvm-orchestrator-api
             port:
               number: 8000
       timeout: {{ .Values.istio.apiTimeout | default "3600s" }}
@@ -38,7 +38,7 @@ spec:
             exact: /healthz
       route:
         - destination:
-            host: kvmaestro-api
+            host: kvm-orchestrator-api
             port:
               number: 8000
 
@@ -52,7 +52,7 @@ spec:
             prefix: /console-ws
       route:
         - destination:
-            host: kvmaestro-console-proxy
+            host: kvm-orchestrator-console-proxy
             port:
               number: 8765
       timeout: {{ .Values.istio.consoleTimeout | default "3600s" }}
@@ -67,7 +67,7 @@ spec:
             prefix: /
       route:
         - destination:
-            host: kvmaestro-ui
+            host: kvm-orchestrator-ui
             port:
               number: 80
 {{- end }}

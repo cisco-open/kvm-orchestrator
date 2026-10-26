@@ -1,4 +1,4 @@
-"""Prometheus metrics for the kvmaestro controller.
+"""Prometheus metrics for the kvm-orchestrator controller.
 
 Design
 ------
@@ -228,17 +228,17 @@ class _StateCollector:
 
         vms_gauge = GaugeMetricFamily(
             "wvc_vms",
-            "VMs known to kvmaestro, grouped by state",
+            "VMs known to kvm-orchestrator, grouped by state",
             labels=["state"],
         )
         vms_os_gauge = GaugeMetricFamily(
             "wvc_vms_by_os",
-            "VMs known to kvmaestro, grouped by state and OS family",
+            "VMs known to kvm-orchestrator, grouped by state and OS family",
             labels=["state", "os_family"],
         )
         nodes_gauge = GaugeMetricFamily(
             "wvc_nodes",
-            "Nodes registered with kvmaestro, grouped by status",
+            "Nodes registered with kvm-orchestrator, grouped by status",
             labels=["status"],
         )
         tenants_gauge = GaugeMetricFamily(

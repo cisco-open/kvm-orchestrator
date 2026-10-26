@@ -7,7 +7,7 @@ public issue. Include steps to reproduce and the affected version.
 
 ## Secrets & configuration
 
-KVMaestro ships **no real secrets**. Every credential in the Helm chart and
+KVM Orchestrator ships **no real secrets**. Every credential in the Helm chart and
 examples is a placeholder (`CHANGE_ME*`) that you must replace for your own
 deployment:
 

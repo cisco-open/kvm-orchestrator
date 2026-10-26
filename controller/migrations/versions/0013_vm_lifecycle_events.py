@@ -58,11 +58,11 @@ def upgrade() -> None:
             "  KEY `ix_vmle_event` (`event`)"
             ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         )
-        # Backfill create events from EXISTING kvmaestro-created VMs only.
+        # Backfill create events from EXISTING kvm-orchestrator-created VMs only.
         # Discovered VMs (owner_user_id IS NULL) are NOT counted: their
         # created_at is the discovery time (DB default), not a real creation
         # date, so seeding them would produce a false "created today" spike.
-        # We only track the lifecycle of VMs kvmaestro actually created.
+        # We only track the lifecycle of VMs kvm-orchestrator actually created.
         op.execute(
             "INSERT INTO `vm_lifecycle_events` (ts, event, os_family, vm_name, vm_id) "
             "SELECT COALESCE(created_at, UTC_TIMESTAMP()), 'create', "

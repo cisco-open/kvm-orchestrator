@@ -1,11 +1,11 @@
 # ---------------------------------------------------------------------------
-# EXAMPLE values overlay for the KVMaestro Helm chart.
+# EXAMPLE values overlay for the KVM Orchestrator Helm chart.
 #
 # COPY this file to e.g. `values/my-env.yaml`, fill in the PLACEHOLDER values
 # below, and deploy with:
 #
-#   helm upgrade --install kvmaestro helm/kvmaestro \
-#     -n <namespace> -f helm/kvmaestro/values/my-env.yaml
+#   helm upgrade --install kvm-orchestrator helm/kvm-orchestrator \
+#     -n <namespace> -f helm/kvm-orchestrator/values/my-env.yaml
 #
 # Every value here is a PLACEHOLDER — there are NO real secrets, hosts, or
 # registries in this file. Replace anything that says CHANGE_ME or *.example.com
@@ -17,15 +17,15 @@
 # Container images. Point these at your own registry and pin immutable tags.
 image:
   api:
-    repository: your-registry.example.com/kvmaestro/api
+    repository: your-registry.example.com/kvm-orchestrator/api
     tag: latest
     pullPolicy: Always
   consoleProxy:
-    repository: your-registry.example.com/kvmaestro/console-proxy
+    repository: your-registry.example.com/kvm-orchestrator/console-proxy
     tag: latest
     pullPolicy: Always
   ui:
-    repository: your-registry.example.com/kvmaestro/ui
+    repository: your-registry.example.com/kvm-orchestrator/ui
     tag: latest
     pullPolicy: Always
 
@@ -57,17 +57,17 @@ hpa:
 istio:
   enabled: true
   gatewaySelector: ingressgateway
-  host: kvmaestro.example.com
+  host: kvm-orchestrator.example.com
   httpRedirect: true
   tls:
     enabled: true
-    secretName: kvmaestro-tls
+    secretName: kvm-orchestrator-tls
   apiTimeout: 3600s
   consoleTimeout: 3600s
 
 config:
-  # UI brand preset: "kvmaestro" is the default open-source identity.
-  BRANDING: "kvmaestro"
+  # UI brand preset: "kvm-orchestrator" is the default open-source identity.
+  BRANDING: "kvm-orchestrator"
   # Environment identity — "live" is the normal (blue) theme; "test" renders a
   # red test theme and prefixes notifications.
   ENVIRONMENT: "live"
@@ -96,9 +96,9 @@ config:
   # secrets block => fencing aborts (safe).
   HA_ENABLED: "false"
   HA_FAILOVER_THRESHOLD: "120"
-  HA_CEPH_USER: "kvmaestro-ha"
+  HA_CEPH_USER: "kvm-orchestrator-ha"
   HA_CEPH_MON_HOST: "10.0.0.11,10.0.0.12,10.0.0.13"
-  WEBEX_DEEP_LINK_BASE: "https://kvmaestro.example.com"
+  WEBEX_DEEP_LINK_BASE: "https://kvm-orchestrator.example.com"
 
   # ---- VM lifecycle / TTL -------------------------------------------------
   # Ships DISARMED. Arm from the VMs-page toggle (persisted in DB, no redeploy).
@@ -115,11 +115,11 @@ config:
 # All secrets are PLACEHOLDERS. Prefer passing sensitive values via
 # `--set-string secrets.X=...` at upgrade time rather than committing them.
 secrets:
-  DATABASE_URL: "mysql+pymysql://kvmaestro:CHANGE_ME_DB_PASSWORD@mysql:3306/kvmaestro"
+  DATABASE_URL: "mysql+pymysql://kvm-orchestrator:CHANGE_ME_DB_PASSWORD@mysql:3306/kvm-orchestrator"
   REDIS_URL: "redis://redis:6379/0"
   FLASK_SECRET_KEY: "CHANGE_ME"
   JWT_SECRET_KEY: "CHANGE_ME"
-  LDAP_BIND_DN: "svc-kvmaestro"
+  LDAP_BIND_DN: "svc-kvm-orchestrator"
   LDAP_BIND_PASSWORD: "CHANGE_ME_LDAP_BIND_PASSWORD"
   AGENT_SHARED_KEY: "CHANGE_ME"
   # OPTIONAL — only needed if you run an external MCP/automation sidecar that
@@ -136,11 +136,11 @@ secrets:
 
 # Break-glass admin (username "admin", bypasses LDAP). Password lives in an
 # externally-managed Secret you create out-of-band — never in this file:
-#   kubectl -n <ns> create secret generic kvmaestro-admin-bootstrap \
+#   kubectl -n <ns> create secret generic kvm-orchestrator-admin-bootstrap \
 #     --from-literal=ADMIN_PASSWORD='<strong-password>'
 adminBootstrap:
   enabled: false
-  secretName: kvmaestro-admin-bootstrap
+  secretName: kvm-orchestrator-admin-bootstrap
   secretKey: ADMIN_PASSWORD
 
 mysql:
@@ -148,9 +148,9 @@ mysql:
   storage: 20Gi
   storageClass: ""
   rootPassword: "CHANGE_ME_DB_PASSWORD"
-  user: "kvmaestro"
+  user: "kvm-orchestrator"
   password: "CHANGE_ME_DB_PASSWORD"
-  database: "kvmaestro"
+  database: "kvm-orchestrator"
 
 redis:
   enabled: true

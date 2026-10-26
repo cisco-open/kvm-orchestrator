@@ -42,7 +42,7 @@ def notify_failover(dead_hostname: str, results: dict) -> None:
     if left_down:
         lines.append(f"- {len(left_down)} VM(s) left down (were not running).")
     if base:
-        lines.append(f"\n[Open {'KVMaestro (test)' if prefix else 'KVMaestro'}]({base}/vms) → migrate the affected VMs.")
+        lines.append(f"\n[Open {'KVM Orchestrator (test)' if prefix else 'KVM Orchestrator'}]({base}/vms) → migrate the affected VMs.")
     lines.append("\n_When the host is recovered, use Readmit before bringing VMs back._")
 
     try:

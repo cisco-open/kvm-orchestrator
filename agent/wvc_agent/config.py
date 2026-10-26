@@ -4,7 +4,7 @@ import yaml
 
 
 DEFAULT_CONFIG = {
-    "controller_url": "https://kvmaestro.example.com",
+    "controller_url": "https://kvm-orchestrator.example.com",
     "agent_key": "",
     "heartbeat_interval": 10,
     "verify_tls": True,

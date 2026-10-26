@@ -32,7 +32,7 @@ Optional
 
 Typical invocation inside a controller pod::
 
-    kubectl -n kvmaestro exec -it deploy/kvmaestro-api -- \\
+    kubectl -n kvm-orchestrator exec -it deploy/kvm-orchestrator-api -- \\
         python /app/scripts/reconcile_shared_vms.py --dry-run
 
 Then re-run without --dry-run once the plan looks right.

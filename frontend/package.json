@@ -1,5 +1,5 @@
 {
-  "name": "kvmaestro-ui",
+  "name": "kvm-orchestrator-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",

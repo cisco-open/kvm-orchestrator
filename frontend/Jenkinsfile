@@ -1,4 +1,4 @@
-// kvmaestro frontend (wvc-ui) Jenkins pipeline
+// kvm-orchestrator frontend (wvc-ui) Jenkins pipeline
 //
 // See controller/Jenkinsfile for the full rationale of the version-consistency
 // gate. This file omits the Alembic gate — it only builds the static-UI image.
@@ -16,7 +16,7 @@ pipeline {
     }
 
     environment {
-        REGISTRY       = 'your-registry.example.com/kvmaestro'
+        REGISTRY       = 'your-registry.example.com/kvm-orchestrator'
         REGISTRY_CREDS = 'your-registry.example.com'
         IMAGE_NAME     = 'wvc-ui'
         BUILD_CONTEXT  = 'frontend'

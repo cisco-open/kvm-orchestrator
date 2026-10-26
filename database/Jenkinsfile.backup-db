@@ -1,7 +1,7 @@
-// kvmaestro K8s MySQL backup pipeline
+// kvm-orchestrator K8s MySQL backup pipeline
 //
-// Dumps the `kvmaestro` database out of the MySQL StatefulSet running in
-// the `kvmaestro` namespace on rke2-k8s, then ships the SQL file to
+// Dumps the `kvm-orchestrator` database out of the MySQL StatefulSet running in
+// the `kvm-orchestrator` namespace on rke2-k8s, then ships the SQL file to
 // backup.example.com for offsite retention. Runs nightly at 02:00 UK.
 //
 // Modelled on self-service/database/Jenkinsfile.backup-db (Jenkins job
@@ -17,7 +17,7 @@
 //     your-backup-host (self-service overwrites `self-service-mysql.sql` each run,
 //     losing point-in-time recovery capability).
 //   - Full mysqldump flag set matches the canonical command in
-//     helm/kvmaestro/DEPLOY.md §2: `--single-transaction` for a
+//     helm/kvm-orchestrator/DEPLOY.md §2: `--single-transaction` for a
 //     non-locking consistent snapshot, `--set-gtid-purged=OFF` so the dump
 //     can replay on any server (GTID or not), `--default-character-set=utf8mb4`
 //     to preserve the DB's real charset, `--routines --events` so stored
@@ -56,12 +56,12 @@ pipeline {
     }
 
     environment {
-        K8S_NAMESPACE = 'kvmaestro'
-        MYSQL_STS     = 'statefulset/kvmaestro-kvmaestro-mysql'
-        DB_NAME       = 'kvmaestro'
+        K8S_NAMESPACE = 'kvm-orchestrator'
+        MYSQL_STS     = 'statefulset/kvm-orchestrator-kvm-orchestrator-mysql'
+        DB_NAME       = 'kvm-orchestrator'
         BACKUP_HOST   = 'backup.example.com'
         BACKUP_USER   = 'root'
-        BACKUP_DIR    = '/data/shared/LabOPS/backup/kvmaestro'
+        BACKUP_DIR    = '/data/shared/LabOPS/backup/kvm-orchestrator'
     }
 
     stages {
@@ -119,7 +119,7 @@ pipeline {
                     sh '''
                         set -eu
                         DUMP_STAMP=$(date -u +%Y%m%d-%H%M%S)
-                        DUMP_FILE="kvmaestro-mysql-${DUMP_STAMP}.sql"
+                        DUMP_FILE="kvm-orchestrator-mysql-${DUMP_STAMP}.sql"
                         echo "Dumping ${DB_NAME} from ${MYSQL_STS} in ns ${K8S_NAMESPACE} -> ${DUMP_FILE}"
 
                         kubectl -n "${K8S_NAMESPACE}" exec "${MYSQL_STS}" -- \\
@@ -187,7 +187,7 @@ pipeline {
     post {
         always {
             // Don't leave large dumps piling up in the Jenkins workspace.
-            sh 'rm -f kvmaestro-mysql-*.sql .dump-filename || true'
+            sh 'rm -f kvm-orchestrator-mysql-*.sql .dump-filename || true'
         }
         success {
             script {

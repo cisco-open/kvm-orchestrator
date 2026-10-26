@@ -1,2 +1,2 @@
-export const VERSION = "v0.34.1";
-export const RELEASE_NOTE = "Avatars: the sidebar user avatar is configurable per brand via Brand.directoryPhotoBase. By default it shows an initial-letter avatar and never calls out to an external host.";
+export const VERSION = "v0.35.0";
+export const RELEASE_NOTE = "Project renamed from KVMaestro to KVM Orchestrator (kvm-orchestrator). Brand preset, logo asset, page titles, and docs updated. No functional change.";

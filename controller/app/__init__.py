@@ -31,7 +31,7 @@ def create_app(config_name: str | None = None) -> Flask:
     except Exception:
         logging.getLogger("wvc").warning("log ring-buffer install failed")
 
-    gunicorn_logger.info("kvmaestro-api %s — %s", VERSION, RELEASE_NOTE)
+    gunicorn_logger.info("kvm-orchestrator-api %s — %s", VERSION, RELEASE_NOTE)
 
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])

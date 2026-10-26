@@ -1,4 +1,4 @@
-"""Generator for the kvmaestro Grafana dashboard JSON.
+"""Generator for the kvm-orchestrator Grafana dashboard JSON.
 
 Run:  python3 build_dashboard.py > grafana-dashboard.json
 
@@ -597,12 +597,12 @@ def build_dashboard():
         "refresh": "30s",
         "schemaVersion": 36,
         "style": "dark",
-        "tags": ["kvmaestro", "kvm"],
+        "tags": ["kvm-orchestrator", "kvm"],
         "templating": {"list": []},
         "time": {"from": "now-6h", "to": "now"},
         "timepicker": {},
         "timezone": "",
-        "title": "kvmaestro",
+        "title": "kvm-orchestrator",
         "uid": "wvc-main",
         "version": 1,
         "weekStart": "",

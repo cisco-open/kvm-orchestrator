@@ -1,4 +1,4 @@
-// kvmaestro controller (wvc-api) Jenkins pipeline
+// kvm-orchestrator controller (wvc-api) Jenkins pipeline
 //
 // One of three per-component pipelines under this repo. Each pipeline builds
 // and pushes exactly one image; version-consistency is enforced across all
@@ -26,7 +26,7 @@ pipeline {
     }
 
     environment {
-        REGISTRY       = 'your-registry.example.com/kvmaestro'
+        REGISTRY       = 'your-registry.example.com/kvm-orchestrator'
         REGISTRY_CREDS = 'your-registry.example.com'
         IMAGE_NAME     = 'wvc-api'
         BUILD_CONTEXT  = 'controller'
@@ -180,7 +180,7 @@ pipeline {
                         sh """
                             docker run -d --rm --name ${mysqlName} --network ${netName} \\
                                 -e MYSQL_ROOT_PASSWORD=alembicroot \\
-                                -e MYSQL_DATABASE=kvmaestro \\
+                                -e MYSQL_DATABASE=kvm-orchestrator \\
                                 -e MYSQL_USER=wvc \\
                                 -e MYSQL_PASSWORD=alembicpass \\
                                 mysql:8
@@ -208,14 +208,14 @@ pipeline {
                         // we just override CMD with a bash -c.
                         sh """
                             docker run --rm --network ${netName} \\
-                                -e DATABASE_URL="mysql+pymysql://wvc:alembicpass@${mysqlName}:3306/kvmaestro" \\
+                                -e DATABASE_URL="mysql+pymysql://wvc:alembicpass@${mysqlName}:3306/kvm-orchestrator" \\
                                 ${apiImage} \\
                                 bash -c 'set -eux; alembic upgrade head; alembic current'
                         """
 
                         sh """
                             docker exec ${mysqlName} mysql -uroot -palembicroot \\
-                                -N -B -e 'SELECT COUNT(*) FROM kvmaestro.alembic_version;' \\
+                                -N -B -e 'SELECT COUNT(*) FROM kvm-orchestrator.alembic_version;' \\
                                 | grep -q '^1\$' || { echo "alembic_version row-count is not 1"; exit 1; }
                         """
                     } finally {

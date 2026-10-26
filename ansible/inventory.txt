@@ -1,4 +1,4 @@
-# EXAMPLE Ansible inventory for KVMaestro agent installs.
+# EXAMPLE Ansible inventory for KVM Orchestrator agent installs.
 # These hosts are PLACEHOLDERS — replace them with your own KVM hosts.
 
 [kvm_all]

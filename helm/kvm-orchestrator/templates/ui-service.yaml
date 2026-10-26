@@ -2,9 +2,9 @@ apiVersion: v1
 kind: Service
 metadata:
   # Static name (see api-service.yaml for rationale). Matches Docker Compose.
-  name: kvmaestro-ui
+  name: kvm-orchestrator-ui
   labels:
-    {{- include "kvmaestro.labels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.labels" . | nindent 4 }}
     app.kubernetes.io/component: ui
 spec:
   type: ClusterIP
@@ -13,5 +13,5 @@ spec:
       targetPort: 80
       protocol: TCP
   selector:
-    {{- include "kvmaestro.selectorLabels" . | nindent 4 }}
+    {{- include "kvm-orchestrator.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: ui

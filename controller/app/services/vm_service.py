@@ -651,7 +651,7 @@ def _neutralize_cpu_features(vm_xml: str) -> tuple[str, bool]:
     "missing features: MPX" — even though the VM is STOPPED and will boot fresh
     on the target, so the source's feature list is irrelevant.
 
-    We reset the block to the abstract form kvmaestro uses at create time
+    We reset the block to the abstract form kvm-orchestrator uses at create time
     (`<cpu mode='host-model' check='partial'><model fallback='allow'/></cpu>`),
     dropping the explicit <feature> children and any pinned <model>/<vendor>.
     libvirt then resolves CPU features against the DESTINATION host. CPU

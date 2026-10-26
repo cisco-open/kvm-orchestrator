@@ -4,7 +4,7 @@ Revision ID: 0014
 Revises: 0013
 Create Date: 2026-09-14
 
-Adds an age-based lifecycle to the `vms` table so kvmaestro can enforce a
+Adds an age-based lifecycle to the `vms` table so kvm-orchestrator can enforce a
 1-year TTL (formerly the self-service portal's `vm_lifecycle` table, now retired
 and owned here where the VMs, owners, delete path and event ledger already live).
 
