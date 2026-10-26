@@ -7,16 +7,16 @@ import threading
 from .config import load_config
 from .heartbeat import start_heartbeat
 
-logger = logging.getLogger("wvc-agent")
+logger = logging.getLogger("kvm-orchestrator-agent")
 
 
 def main():
-    """Main entry point for wvc-agent."""
+    """Main entry point for kvm-orchestrator-agent."""
     parser = argparse.ArgumentParser(description="KVM Orchestrator Node Agent")
     parser.add_argument(
         "-c",
         "--config",
-        default="/etc/wvc-agent/config.yaml",
+        default="/etc/kvm-orchestrator-agent/config.yaml",
         help="Path to config file",
     )
     parser.add_argument(
@@ -36,7 +36,7 @@ def main():
     )
 
     config = load_config(args.config)
-    logger.info("wvc-agent starting (controller: %s)", config["controller_url"])
+    logger.info("kvm-orchestrator-agent starting (controller: %s)", config["controller_url"])
 
     # Heartbeat is the core HA-critical function and has minimal deps
     # (requests + psutil). It runs in the main thread so the process lives

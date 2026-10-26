@@ -1,2 +1,2 @@
-VERSION = "v0.35.0"
-RELEASE_NOTE = "Project renamed from KVMaestro to KVM Orchestrator (kvm-orchestrator). Identity strings, brand preset/key, logo asset, Helm chart directory/name, and all docs/comments updated. No functional change to VM management, HA, or APIs."
+VERSION = "v0.35.1"
+RELEASE_NOTE = "Node agent renamed from wvc-agent to kvm-orchestrator-agent (Python package kvm_orchestrator_agent, systemd unit kvm-orchestrator-agent.service, install paths /opt|/etc/kvm-orchestrator-agent, ansible playbook install_kvm_orchestrator_agent.yml). No controller/API or metric-name changes."

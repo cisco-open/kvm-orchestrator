@@ -6,7 +6,7 @@ seconds it SSH-polls every registered node, collects basic metrics, and
 updates the nodes table.  This makes nodes go online immediately without
 requiring a separate agent process on each KVM host.
 
-When the real wvc-agent is deployed the agent's heartbeats (via
+When the real kvm-orchestrator-agent is deployed the agent's heartbeats (via
 /api/agent/heartbeat) will take over; this monitor acts as a fallback and
 will no longer drive status once the agent sends its first heartbeat.
 """

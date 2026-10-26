@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 
 import libvirt
 
-logger = logging.getLogger("wvc-agent.libvirt")
+logger = logging.getLogger("kvm-orchestrator-agent.libvirt")
 
 WVC_NAMESPACE = "https://kvm-orchestrator.local/xmlns/instance/1.0"
 MANAGED_BY_TAG = "kvm-orchestrator"

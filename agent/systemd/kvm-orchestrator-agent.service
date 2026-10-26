@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/wvc-agent --config /etc/wvc-agent/config.yaml
+ExecStart=/usr/local/bin/kvm-orchestrator-agent --config /etc/kvm-orchestrator-agent/config.yaml
 Restart=always
 RestartSec=5
 StandardOutput=journal

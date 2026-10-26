@@ -4,7 +4,7 @@ import logging
 
 from flask import Flask, jsonify, request
 
-logger = logging.getLogger("wvc-agent.api")
+logger = logging.getLogger("kvm-orchestrator-agent.api")
 
 app = Flask(__name__)
 

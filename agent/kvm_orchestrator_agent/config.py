@@ -9,8 +9,8 @@ DEFAULT_CONFIG = {
     "heartbeat_interval": 10,
     "verify_tls": True,
     "listen_port": 8444,
-    "tls_cert": "/etc/wvc-agent/tls/agent.crt",
-    "tls_key": "/etc/wvc-agent/tls/agent.key",
+    "tls_cert": "/etc/kvm-orchestrator-agent/tls/agent.crt",
+    "tls_key": "/etc/kvm-orchestrator-agent/tls/agent.key",
 }
 
 

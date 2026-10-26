@@ -1,5 +1,5 @@
 ---
-# Install / update the kvm-orchestrator node agent (wvc-agent) on KVM hosts.
+# Install / update the kvm-orchestrator node agent (kvm-orchestrator-agent) on KVM hosts.
 #
 # The agent pushes a heartbeat every `heartbeat_interval` seconds to the
 # controller's /api/agent/heartbeat endpoint. This is what HA failure-detection
@@ -11,7 +11,7 @@
 # all VM actions over SSH, so the agent's command API is not required.
 #
 # Usage:
-#   ansible-playbook -i inventory-test.ini install_wvc_agent.yml \
+#   ansible-playbook -i inventory-test.ini install_kvm_orchestrator_agent.yml \
 #     -e controller_url=https://test.example.com \
 #     -e agent_key=test-agent-key
 #
@@ -24,9 +24,9 @@
   gather_facts: true
   vars:
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
-    wvc_agent_dir: /opt/wvc-agent
-    wvc_agent_venv: /opt/wvc-agent/venv
-    wvc_agent_config_dir: /etc/wvc-agent
+    kvm_orchestrator_agent_dir: /opt/kvm-orchestrator-agent
+    kvm_orchestrator_agent_venv: /opt/kvm-orchestrator-agent/venv
+    kvm_orchestrator_agent_config_dir: /etc/kvm-orchestrator-agent
     heartbeat_interval: 10
     # Set false for lab controllers whose TLS cert has no trusted CA chain.
     verify_tls: false
@@ -57,22 +57,22 @@
         group: root
         mode: "0755"
       loop:
-        - "{{ wvc_agent_dir }}"
-        - "{{ wvc_agent_config_dir }}"
+        - "{{ kvm_orchestrator_agent_dir }}"
+        - "{{ kvm_orchestrator_agent_config_dir }}"
 
     - name: Copy agent package
       ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../agent/wvc_agent/"
-        dest: "{{ wvc_agent_dir }}/wvc_agent/"
+        src: "{{ playbook_dir }}/../agent/kvm_orchestrator_agent/"
+        dest: "{{ kvm_orchestrator_agent_dir }}/kvm_orchestrator_agent/"
         owner: root
         group: root
         mode: "0644"
-      notify: Restart wvc-agent
+      notify: Restart kvm-orchestrator-agent
 
     - name: Create virtualenv
       ansible.builtin.command:
-        cmd: python3 -m venv {{ wvc_agent_venv }}
-        creates: "{{ wvc_agent_venv }}/bin/python"
+        cmd: python3 -m venv {{ kvm_orchestrator_agent_venv }}
+        creates: "{{ kvm_orchestrator_agent_venv }}/bin/python"
 
     - name: Install heartbeat-only python deps into venv
       ansible.builtin.pip:
@@ -80,12 +80,12 @@
           - requests>=2.32
           - psutil>=6.1
           - pyyaml>=6.0
-        virtualenv: "{{ wvc_agent_venv }}"
+        virtualenv: "{{ kvm_orchestrator_agent_venv }}"
         state: present
 
     - name: Write agent config
       ansible.builtin.copy:
-        dest: "{{ wvc_agent_config_dir }}/config.yaml"
+        dest: "{{ kvm_orchestrator_agent_config_dir }}/config.yaml"
         owner: root
         group: root
         mode: "0640"
@@ -94,11 +94,11 @@
           agent_key: "{{ agent_key }}"
           heartbeat_interval: {{ heartbeat_interval }}
           verify_tls: {{ verify_tls | lower }}
-      notify: Restart wvc-agent
+      notify: Restart kvm-orchestrator-agent
 
     - name: Install systemd unit (heartbeat-only)
       ansible.builtin.copy:
-        dest: /etc/systemd/system/wvc-agent.service
+        dest: /etc/systemd/system/kvm-orchestrator-agent.service
         owner: root
         group: root
         mode: "0644"
@@ -111,8 +111,8 @@
           [Service]
           Type=simple
           User=root
-          Environment=PYTHONPATH={{ wvc_agent_dir }}
-          ExecStart={{ wvc_agent_venv }}/bin/python -m wvc_agent.main --no-api --config {{ wvc_agent_config_dir }}/config.yaml
+          Environment=PYTHONPATH={{ kvm_orchestrator_agent_dir }}
+          ExecStart={{ kvm_orchestrator_agent_venv }}/bin/python -m kvm_orchestrator_agent.main --no-api --config {{ kvm_orchestrator_agent_config_dir }}/config.yaml
           Restart=always
           RestartSec=5
           StandardOutput=journal
@@ -122,11 +122,11 @@
           WantedBy=multi-user.target
       notify:
         - Reload systemd
-        - Restart wvc-agent
+        - Restart kvm-orchestrator-agent
 
-    - name: Enable + start wvc-agent
+    - name: Enable + start kvm-orchestrator-agent
       ansible.builtin.systemd:
-        name: wvc-agent
+        name: kvm-orchestrator-agent
         enabled: true
         state: started
         daemon_reload: true
@@ -136,7 +136,7 @@
       ansible.builtin.systemd:
         daemon_reload: true
 
-    - name: Restart wvc-agent
+    - name: Restart kvm-orchestrator-agent
       ansible.builtin.systemd:
-        name: wvc-agent
+        name: kvm-orchestrator-agent
         state: restarted

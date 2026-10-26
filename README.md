@@ -498,6 +498,7 @@ architecture and its troubleshooting table.
 
 | Version | Changes |
 |---|---|
+| v0.35.1 | Node agent renamed `wvc-agent` → **`kvm-orchestrator-agent`** (Python package `kvm_orchestrator_agent`, systemd unit `kvm-orchestrator-agent.service`, install paths `/opt`/`/etc/kvm-orchestrator-agent`, ansible playbook `install_kvm_orchestrator_agent.yml`). No API or metric-name changes |
 | v0.35.0 | Project renamed from KVMaestro to **KVM Orchestrator** (`kvm-orchestrator`) — identity strings, brand preset/key, logo asset, Helm chart name, and all docs/comments updated. No functional change |
 | v0.34.1 | Configurable per-brand user avatars — by default the sidebar shows an initial-letter avatar and never fetches from an external host; set `Brand.directoryPhotoBase` in `branding.ts` only if you run a corporate photo directory keyed by username |
 | v0.34.0 | HA reliability — Readmit now also recovers nodes in `failed` status (not just `fenced`); a mass-failure circuit breaker prevents a controller-side blip from flagging the whole fleet at once; nodes flagged `failed` auto-recover to `online` once they heartbeat again (fenced nodes still require guarded admin readmit); and OVS VLAN bridges present on the nodes are auto-discovered into the networks catalog (hidden, pending admin review) |

@@ -7,7 +7,7 @@ import requests
 
 from .metrics import collect_metrics
 
-logger = logging.getLogger("wvc-agent.heartbeat")
+logger = logging.getLogger("kvm-orchestrator-agent.heartbeat")
 
 
 def start_heartbeat(config: dict) -> None:

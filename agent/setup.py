@@ -1,9 +1,9 @@
-"""wvc-agent package setup."""
+"""kvm-orchestrator-agent package setup."""
 
 from setuptools import setup, find_packages
 
 setup(
-    name="wvc-agent",
+    name="kvm-orchestrator-agent",
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
@@ -16,7 +16,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "wvc-agent=wvc_agent.main:main",
+            "kvm-orchestrator-agent=kvm_orchestrator_agent.main:main",
         ],
     },
     python_requires=">=3.11",
