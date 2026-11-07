@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="KVM Orchestrator">
   <defs>
-    <linearGradient id="kmg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="kog" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#2563eb"/>
       <stop offset="1" stop-color="#1e3a8a"/>
     </linearGradient>
   </defs>
-  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#kmg)"/>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#kog)"/>
   <g fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
     <!-- K -->
     <path d="M34 36 V92"/>
     <path d="M34 64 L58 36"/>
     <path d="M34 64 L58 92"/>
-    <!-- M -->
-    <path d="M72 92 V44 L88 68 L104 44 V92"/>
+    <!-- O -->
+    <circle cx="90" cy="64" r="22"/>
   </g>
 </svg>
