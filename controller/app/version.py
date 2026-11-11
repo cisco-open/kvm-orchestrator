@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.2"
-RELEASE_NOTE = "Cloud-init seed on SHARED Ceph RBD. Quick Create used to write each Linux VM's cloud-init seed ISO to the node's LOCAL filesystem (/var/lib/libvirt/images/wvc-seed/<name>.iso) and attach it as a file-backed cdrom. That stranded data on one host and broke live migration ('Cannot access storage file .../wvc-seed/<name>.iso: No such file or directory') because the target node has no such file/dir. Now the seed ISO is built to a temp file, imported into the shared Ceph pool as '<name>-seed', and attached as a NETWORK (rbd) read-only cdrom — so ALL VM data lives on shared storage and the VM is always live-migratable (_is_shared_disk treats type=network as shared). Delete now also rbd-rm's the '<name>-seed' image. For EXISTING VMs that still carry a local seed, _live_migrate now detaches the spent seed cdrom (a one-time first-boot artifact) before migrating, so they migrate cleanly too. No schema or API-contract change."
+VERSION = "v0.35.3"
+RELEASE_NOTE = "VMs page: new toggleable 'Expires' column showing each VM's remaining 1-year-TTL days ('Nd left', amber within 30d, 'Exempt'/'Expired'/'—' as applicable). Previously lifecycle only surfaced as a small badge next to State that showed a day-count only within the final 30 days, so TTL status was easy to miss. Builds on v0.35.2 (cloud-init seed on shared Ceph RBD + live-migrate detaches spent local seeds)."

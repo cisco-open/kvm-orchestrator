@@ -151,6 +151,40 @@ function expiryBadge(vm: VM): React.ReactNode {
   return null;
 }
 
+// Dedicated "Expires" column cell — ALWAYS shows the remaining days (not just
+// within 30d like the State-column badge), so lifecycle is visible at a glance.
+//   exempt            → grey "Exempt"
+//   auto_stopped / pending_delete → red "Expired"
+//   expires_at set    → "Nd left" (amber ≤30d, else grey), tooltip = exact date
+//   no expires_at     → "—"
+function expiresCell(vm: VM): React.ReactNode {
+  if (vm.exempt) {
+    return (
+      <span className="text-xs text-gray-500" title="Exempt from the 1-year TTL — no expiry enforcement">
+        Exempt
+      </span>
+    );
+  }
+  if (vm.lifecycle_state === "pending_delete" || vm.lifecycle_state === "auto_stopped") {
+    return (
+      <span className="text-xs font-medium text-red-700" title="Expired — Renew to restore">
+        Expired
+      </span>
+    );
+  }
+  if (vm.expires_at) {
+    const expires = new Date(vm.expires_at);
+    const days = Math.floor((expires.getTime() - Date.now()) / 86_400_000);
+    const cls = days <= 30 ? "text-amber-700 font-medium" : "text-gray-600";
+    return (
+      <span className={`text-xs ${cls}`} title={`Expires ${expires.toLocaleString()}`}>
+        {days}d left
+      </span>
+    );
+  }
+  return <span className="text-xs text-gray-400">—</span>;
+}
+
 function vlanLabel(raw: string | null): string {
   if (!raw) return "—";
   const m = raw.match(/(?:br|vlan|bond\d+\.)(\d+)$/i);
@@ -2526,7 +2560,7 @@ function QuickCreateModal({
 // (between State and Priority/Tenant/Actions).
 type VmColumnId =
   | "host" | "ip" | "vcpus" | "ram" | "network" | "disk"
-  | "datastore" | "priority" | "tenant";
+  | "datastore" | "priority" | "tenant" | "expires";
 
 interface VmColumnDef {
   id: VmColumnId;
@@ -2544,6 +2578,7 @@ const VM_COLUMNS: readonly VmColumnDef[] = [
   { id: "datastore", label: "Datastore", adminOnly: true  },
   { id: "priority",  label: "Priority",  adminOnly: false },
   { id: "tenant",    label: "Tenant",    adminOnly: false },
+  { id: "expires",   label: "Expires",   adminOnly: false },
 ] as const;
 
 // localStorage key for the admin's hidden-column preference (list of column ids).
@@ -3398,6 +3433,11 @@ export default function VMs() {
                         —
                       </span>
                     )}
+                  </td>
+                  )}
+                  {colShown("expires") && (
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {expiresCell(vm)}
                   </td>
                   )}
                   <td className="px-4 py-3">
