@@ -345,6 +345,27 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
     now = datetime.utcnow()
     try:
         with conn.cursor() as cur:
+            # ------------------------------------------------------------------
+            # Preserve admin-set metadata across a reap+reinsert.
+            #
+            # The reap below DELETEs stale rows; a later rediscovery re-INSERTs
+            # them with DEFAULT tenant_id (SHARED) / owner_user_id (NULL) /
+            # priority ('default') / exempt (0) / expires_at — silently wiping
+            # admin choices. Snapshot those fields by the STABLE uuid BEFORE we
+            # touch anything, then re-apply them after the upserts + reap so a
+            # sync cycle can never lose them.
+            disc_uuids = [v.get("uuid") for v in vms if v.get("uuid")]
+            preserved: dict[str, dict] = {}
+            if disc_uuids:
+                ph = ",".join(["%s"] * len(disc_uuids))
+                cur.execute(
+                    "SELECT uuid, tenant_id, owner_user_id, priority, exempt, "
+                    "expires_at, renewed_at, lifecycle_state "
+                    f"FROM vms WHERE uuid IN ({ph})",
+                    disc_uuids,
+                )
+                preserved = {r["uuid"]: r for r in cur.fetchall()}
+
             for vm in vms:
                 if "error" in vm and len(vm) <= 3:
                     continue  # skip collection errors
@@ -461,6 +482,19 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
                     "vm_sync: reaped %d stale VM row(s) on node_id=%d "
                     "(unseen for >%ds)",
                     cur.rowcount, node_id, _STALE_VM_GRACE_SECONDS,
+                )
+
+            # Re-apply the admin-metadata snapshot by uuid. Restores admin-set
+            # tenancy/owner/priority/exempt/TTL on any row that was reaped+
+            # reinserted this cycle; harmless no-op write otherwise.
+            for v_uuid, meta in preserved.items():
+                cur.execute(
+                    "UPDATE vms SET tenant_id=%s, owner_user_id=%s, priority=%s, "
+                    "exempt=%s, expires_at=%s, renewed_at=%s, lifecycle_state=%s "
+                    "WHERE uuid=%s",
+                    (meta["tenant_id"], meta["owner_user_id"], meta["priority"],
+                     meta["exempt"], meta["expires_at"], meta["renewed_at"],
+                     meta["lifecycle_state"], v_uuid),
                 )
 
         conn.commit()

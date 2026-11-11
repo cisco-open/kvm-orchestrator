@@ -91,65 +91,6 @@ function PriorityBadge({ priority }: { priority?: string }) {
   );
 }
 
-// 1-year-TTL lifecycle badge. Derived purely from server-supplied fields:
-//   exempt            → no expiry enforcement (grey "Exempt").
-//   pending_delete    → expired+unrenewed past grace; Ops asked to delete (red).
-//   auto_stopped      → shut down at expiry; renew to restore (red).
-//   expires_at ≤ 30d  → amber "Expires in Nd" (whole days).
-//   expires_at > 30d  → subtle grey "Expires <date>".
-//   none of the above → nothing.
-function expiryBadge(vm: VM): React.ReactNode {
-  if (vm.exempt) {
-    return (
-      <span
-        className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600"
-        title="Exempt from the 1-year TTL — no expiry enforcement"
-      >
-        Exempt
-      </span>
-    );
-  }
-  if (vm.lifecycle_state === "pending_delete") {
-    return (
-      <span
-        className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-200 text-red-900"
-        title="Expired and unrenewed past the grace period — flagged to Ops for deletion. Renew to restore."
-      >
-        Expired — deletion requested
-      </span>
-    );
-  }
-  if (vm.lifecycle_state === "auto_stopped") {
-    return (
-      <span
-        className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800"
-        title="Shut down at its 1-year expiry. It cannot be restarted until you Renew it."
-      >
-        Expired — shut down
-      </span>
-    );
-  }
-  if (vm.expires_at) {
-    const expires = new Date(vm.expires_at);
-    const days = Math.floor((expires.getTime() - Date.now()) / 86_400_000);
-    if (days <= 30) {
-      return (
-        <span
-          className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-800"
-          title={`Expires ${expires.toLocaleDateString()}`}
-        >
-          Expires in {days}d
-        </span>
-      );
-    }
-    return (
-      <span className="text-xs text-gray-400" title={`Expires ${expires.toLocaleString()}`}>
-        Expires {expires.toLocaleDateString()}
-      </span>
-    );
-  }
-  return null;
-}
 
 // Dedicated "Expires" column cell — ALWAYS shows the remaining days (not just
 // within 30d like the State-column badge), so lifecycle is visible at a glance.
@@ -2584,6 +2525,48 @@ const VM_COLUMNS: readonly VmColumnDef[] = [
 // localStorage key for the admin's hidden-column preference (list of column ids).
 const VM_COLS_STORAGE_KEY = "wvc.vms.hiddenColumns";
 
+// Every column is sortable. Returns a comparable value for a VM in a given
+// column: numbers sort numerically, strings case-insensitively. Unset values
+// sort to the end. Priority sorts by severity (critical < priority < default).
+const PRIORITY_RANK: Record<string, number> = { critical: 0, priority: 1, default: 2 };
+function ipToNum(ip: string | null): number {
+  if (!ip) return Number.POSITIVE_INFINITY;
+  const parts = ip.split(".");
+  if (parts.length !== 4) return Number.POSITIVE_INFINITY;
+  let n = 0;
+  for (const part of parts) {
+    const o = Number(part);
+    if (Number.isNaN(o)) return Number.POSITIVE_INFINITY;
+    n = n * 256 + o;
+  }
+  return n;
+}
+function vmSortValue(vm: VM, col: string): number | string {
+  switch (col) {
+    case "name":      return (vm.name ?? "").toLowerCase();
+    case "state":     return vm.state ?? "";
+    case "host":      return (vm.node_hostname ?? "").toLowerCase();
+    case "ip":        return ipToNum(vm.ip);
+    case "vcpus":     return vm.vcpus ?? 0;
+    case "ram":       return vm.ram_mb ?? 0;
+    case "network":   return (vm.vlan ?? "").toLowerCase();
+    case "disk":      return vm.disk_gb ?? 0;
+    case "datastore": return (vm.datastore ?? "").toLowerCase();
+    case "priority":  return PRIORITY_RANK[vm.priority ?? "default"] ?? 2;
+    case "tenant":    return (vm.tenant_name ?? "").toLowerCase();
+    case "expires":   return vm.exempt || !vm.expires_at
+                               ? Number.POSITIVE_INFINITY
+                               : new Date(vm.expires_at).getTime();
+    default:          return "";
+  }
+}
+// Human label for the active sort column (Name/State aren't in VM_COLUMNS).
+function sortColLabel(id: string): string {
+  if (id === "name") return "Name";
+  if (id === "state") return "State";
+  return VM_COLUMNS.find((c) => c.id === id)?.label ?? id;
+}
+
 export default function VMs() {
   const queryClient = useQueryClient();
   // `tenants` is the user's AD-mapped membership list from /api/auth/me
@@ -2608,7 +2591,7 @@ export default function VMs() {
   // State is in-memory only (resets on navigation); URL/localStorage
   // persistence would be the next step if users ask for it.
   const [search, setSearch]                   = useState("");
-  const [sortBy, setSortBy]                   = useState<"host" | "datastore" | null>(null);
+  const [sortBy, setSortBy]                   = useState<string | null>(null);
   const [sortDir, setSortDir]                 = useState<"asc" | "desc">("asc");
 
   // Admin-only column picker. `hiddenCols` is the set of column ids the admin
@@ -2952,17 +2935,20 @@ export default function VMs() {
       );
     }
     if (sortBy) {
-      const key: keyof Pick<VM, "node_hostname" | "datastore"> =
-        sortBy === "host" ? "node_hostname" : "datastore";
       list = [...list].sort((a, b) => {
-        // Null/empty datastores sort to the end regardless of direction
-        // so the meaningful values cluster together.
-        const av = (a[key] ?? "").toString().toLowerCase();
-        const bv = (b[key] ?? "").toString().toLowerCase();
-        if (av === "" && bv === "") return 0;
-        if (av === "") return 1;
-        if (bv === "") return -1;
-        const cmp = av.localeCompare(bv);
+        const av = vmSortValue(a, sortBy);
+        const bv = vmSortValue(b, sortBy);
+        let cmp: number;
+        if (typeof av === "number" && typeof bv === "number") {
+          cmp = av === bv ? 0 : av < bv ? -1 : 1;
+        } else {
+          const as = String(av);
+          const bs = String(bv);
+          if (as === "" && bs === "") cmp = 0;
+          else if (as === "") cmp = 1;
+          else if (bs === "") cmp = -1;
+          else cmp = as.localeCompare(bs);
+        }
         return sortDir === "asc" ? cmp : -cmp;
       });
     }
@@ -2971,7 +2957,7 @@ export default function VMs() {
 
   // Three-state sort cycle: unsorted → asc → desc → unsorted. Switching
   // columns resets to asc on the new column.
-  const handleSortClick = (col: "host" | "datastore") => {
+  const handleSortClick = (col: string) => {
     if (sortBy !== col) {
       setSortBy(col);
       setSortDir("asc");
@@ -3196,7 +3182,7 @@ export default function VMs() {
             <span className="text-xs text-gray-500">
               {displayVms.length} of {vmList.length}
               {sortBy && (
-                <> · sorted by <span className="font-medium">{sortBy === "host" ? "Host" : "Datastore"}</span> ({sortDir})</>
+                <> · sorted by <span className="font-medium">{sortColLabel(sortBy)}</span> ({sortDir})</>
               )}
             </span>
           )}
@@ -3293,23 +3279,33 @@ export default function VMs() {
                     infra topology that non-admins don't need.
                     v0.32.0: admin column picker — each toggleable column is
                     gated on colShown(); Name/State/Actions are always shown. */}
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">State</th>
-                {visibleCols.map((col) => {
-                  const sortKey: "host" | "datastore" | null =
-                    col.id === "host" ? "host" : col.id === "datastore" ? "datastore" : null;
-                  if (!sortKey) {
-                    return (
-                      <th key={col.id} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                        {col.label}
-                      </th>
-                    );
-                  }
-                  const isActive = sortBy === sortKey;
+                {([{ id: "name", label: "Name" }, { id: "state", label: "State" }] as const).map((col) => {
+                  const isActive = sortBy === col.id;
                   return (
                     <th
                       key={col.id}
-                      onClick={() => handleSortClick(sortKey)}
+                      onClick={() => handleSortClick(col.id)}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:bg-gray-100"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {col.label}
+                        {isActive ? (
+                          sortDir === "asc"
+                            ? <ChevronUp size={12} className="text-gray-700" />
+                            : <ChevronDown size={12} className="text-gray-700" />
+                        ) : (
+                          <ChevronUp size={12} className="text-gray-300" />
+                        )}
+                      </span>
+                    </th>
+                  );
+                })}
+                {visibleCols.map((col) => {
+                  const isActive = sortBy === col.id;
+                  return (
+                    <th
+                      key={col.id}
+                      onClick={() => handleSortClick(col.id)}
                       className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:bg-gray-100"
                     >
                       <span className="inline-flex items-center gap-1">
@@ -3353,7 +3349,6 @@ export default function VMs() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <StateBadge state={vm.state} />
-                      {expiryBadge(vm)}
                     </div>
                   </td>
                   {colShown("host") && (

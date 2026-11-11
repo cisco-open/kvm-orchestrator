@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.3"
-RELEASE_NOTE = "VMs page: new toggleable 'Expires' column showing each VM's remaining 1-year-TTL days ('Nd left', amber within 30d, 'Exempt'/'Expired'/'—' as applicable). Previously lifecycle only surfaced as a small badge next to State that showed a day-count only within the final 30 days, so TTL status was easy to miss. Builds on v0.35.2 (cloud-init seed on shared Ceph RBD + live-migrate detaches spent local seeds)."
+VERSION = "v0.35.4"
+RELEASE_NOTE = "(1) vm_sync no longer wipes admin-set VM metadata on a reap+reinsert — _do_upsert snapshots tenant_id/owner_user_id/priority/exempt/expires_at/renewed_at/lifecycle_state by the stable libvirt uuid before the upsert+reap and re-applies them after, so admin tenancy/owner/priority/exempt/TTL survive node outages and reaps. (2) VMs page: every column is now sortable (name/state/host/ip/vcpus/ram/network/disk/datastore/priority/tenant/expires), type-aware (numeric for vcpus/ram/disk/ip/expires; priority by severity). (3) Removed the duplicate lifecycle badge next to State; lifecycle is shown only in the single 'Expires' column."
