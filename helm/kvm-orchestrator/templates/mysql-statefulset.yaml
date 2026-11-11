@@ -78,7 +78,7 @@ spec:
     - metadata:
         name: mysql-data
       spec:
-        accessModes: ["ReadWriteMany"]
+        accessModes: [{{ .Values.mysql.accessMode | default "ReadWriteMany" | quote }}]
         {{- if .Values.mysql.storageClass }}
         storageClassName: {{ .Values.mysql.storageClass }}
         {{- end }}

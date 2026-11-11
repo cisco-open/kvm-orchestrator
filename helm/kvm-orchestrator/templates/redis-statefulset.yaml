@@ -61,7 +61,7 @@ spec:
     - metadata:
         name: redis-data
       spec:
-        accessModes: ["ReadWriteMany"]
+        accessModes: [{{ .Values.redis.accessMode | default "ReadWriteMany" | quote }}]
         {{- if .Values.redis.storageClass }}
         storageClassName: {{ .Values.redis.storageClass }}
         {{- end }}

@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.5"
-RELEASE_NOTE = "Lifecycle: continuous enrollment backfill in the daily checker — every non-exempt VM lacking a term gets expires_at = created_at + TTL on each run (migration 0014 only did this once at install; vm_sync inserts newly-discovered VMs with expires_at=NULL, which would otherwise escape lifecycle forever = 'limbo'). Runs regardless of the enforcement switch; exempt VMs left NULL. Pairs with the uuid-keyed metadata preservation in vm_sync."
+VERSION = "v0.35.6"
+RELEASE_NOTE = "Helm: parameterize mysql + redis StatefulSet volumeClaimTemplate accessMode (default ReadWriteMany; set ReadWriteOnce for ceph-rbd). Lets the MySQL/Redis state run on ceph-rbd (RWO block) instead of NFS (RWX) — NFS/InnoDB is fragile (lock-loss -> OS error 5/close 105 crash loops under NFS-server load)."
