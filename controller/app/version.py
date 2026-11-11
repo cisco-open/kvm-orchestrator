@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.4"
-RELEASE_NOTE = "(1) vm_sync no longer wipes admin-set VM metadata on a reap+reinsert — _do_upsert snapshots tenant_id/owner_user_id/priority/exempt/expires_at/renewed_at/lifecycle_state by the stable libvirt uuid before the upsert+reap and re-applies them after, so admin tenancy/owner/priority/exempt/TTL survive node outages and reaps. (2) VMs page: every column is now sortable (name/state/host/ip/vcpus/ram/network/disk/datastore/priority/tenant/expires), type-aware (numeric for vcpus/ram/disk/ip/expires; priority by severity). (3) Removed the duplicate lifecycle badge next to State; lifecycle is shown only in the single 'Expires' column."
+VERSION = "v0.35.5"
+RELEASE_NOTE = "Lifecycle: continuous enrollment backfill in the daily checker — every non-exempt VM lacking a term gets expires_at = created_at + TTL on each run (migration 0014 only did this once at install; vm_sync inserts newly-discovered VMs with expires_at=NULL, which would otherwise escape lifecycle forever = 'limbo'). Runs regardless of the enforcement switch; exempt VMs left NULL. Pairs with the uuid-keyed metadata preservation in vm_sync."

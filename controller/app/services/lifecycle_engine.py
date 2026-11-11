@@ -91,8 +91,35 @@ def run_expiry_check(dry_run: bool = False) -> dict:
     now = datetime.utcnow()
     stats = {"checked": 0, "warned": 0, "stopped": 0,
              "simulated_stop": 0, "ops_delete_requested": 0,
-             "skipped_exempt": 0, "enabled": enabled, "dry_run": dry_run,
-             "destructive": destructive}
+             "skipped_exempt": 0, "enrolled": 0, "enabled": enabled,
+             "dry_run": dry_run, "destructive": destructive}
+
+    # ----------------------------------------------------------------------
+    # Continuous enrollment. Give every non-exempt VM that lacks a term one
+    # (expires_at = created_at + TTL), so a VM never sits in "limbo" (no
+    # expiry AND not exempt). Migration 0014 did this ONCE at install; but
+    # vm_sync inserts newly-DISCOVERED VMs with expires_at=NULL, so without a
+    # continuous backfill those VMs escape lifecycle forever. Exempt VMs are
+    # intentionally left NULL (no term). Runs regardless of the enforcement
+    # switch — enrollment is metadata, never an action. (INTERVAL in SECONDS
+    # so fractional TTLs used by test control planes work too.)
+    ttl_seconds = int(ttl * 86400)
+    _enr_conn = _db()
+    try:
+        with _enr_conn.cursor() as _enr_cur:
+            _enr_cur.execute(
+                "UPDATE vms SET expires_at = created_at + INTERVAL %s SECOND, "
+                "renewed_at = COALESCE(renewed_at, created_at) "
+                "WHERE expires_at IS NULL AND exempt = 0",
+                (ttl_seconds,),
+            )
+            stats["enrolled"] = _enr_cur.rowcount
+        _enr_conn.commit()
+        if stats["enrolled"]:
+            logger.info("Lifecycle: enrolled %d un-termed VM(s) "
+                        "(expires_at = created_at + %.4gd)", stats["enrolled"], ttl)
+    finally:
+        _enr_conn.close()
 
     if not enabled:
         logger.info("Lifecycle enforcement disabled (LIFECYCLE_ENABLED=false) — no-op")
