@@ -828,6 +828,38 @@ def _offline_migrate(vm: dict, target: dict) -> dict:
     return {"ok": True}
 
 
+def _detach_local_seed_cdroms(vm: dict) -> None:
+    """Detach any LOCAL file-backed cdrom (cloud-init seed ISO) from a running
+    VM so it does not block live migration. Best-effort; never raises.
+
+    Network (RBD) cdroms are shared storage and are left untouched.
+    """
+    vm_name = vm["name"]
+    out, _err, rc = _ssh_run(vm, f"virsh domblklist '{vm_name}' --details")
+    if rc != 0 or not out:
+        return
+    for line in out.splitlines()[2:]:
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        dtype, device, target = parts[0], parts[1], parts[2]
+        source = parts[3] if len(parts) > 3 else ""
+        # Only detach LOCAL (file) cdroms, and only the wvc seed artifact.
+        if device != "cdrom" or dtype != "file":
+            continue
+        if "wvc-seed" not in source and not source.endswith("-seed.iso"):
+            continue
+        out2, err2, rc2 = _ssh_run(
+            vm, f"virsh detach-disk '{vm_name}' {target} --live --config"
+        )
+        if rc2 == 0:
+            logger.info("VM %s: detached local seed cdrom %s (%s) before "
+                        "live migration", vm_name, target, source)
+        else:
+            logger.warning("VM %s: failed to detach local seed cdrom %s: %s",
+                           vm_name, target, (err2 or out2).strip())
+
+
 def _live_migrate(vm: dict, target: dict) -> dict:
     """
     Live migration using virsh migrate with qemu+ssh transport.
@@ -840,6 +872,16 @@ def _live_migrate(vm: dict, target: dict) -> dict:
 
     disks    = _get_disk_info(vm)
     has_local = any(not _is_shared_disk(d) and d.get("source") for d in disks)
+
+    # Detach any LOCAL file-backed cdrom (the spent cloud-init seed ISO under
+    # /var/lib/libvirt/images/wvc-seed/). It lives on the source node's local
+    # filesystem and the target cannot open it, so libvirt refuses the live
+    # migration ("Cannot access storage file .../wvc-seed/<name>.iso"). The
+    # seed is a one-time first-boot artifact — cloud-init has already consumed
+    # it on a running VM — so detaching it is safe and leaves the VM on 100%
+    # shared storage. (New VMs created since the seed-on-RBD fix keep their
+    # seed on shared Ceph and skip this entirely.)
+    _detach_local_seed_cdroms(vm)
 
     # Write the SSH private key to the source node via base64-encoded echo.
     # Using SFTP for this is unreliable — OpenSSH's libcrypto is strict about
@@ -1932,6 +1974,12 @@ def vm_delete(vm_id: int, delete_disk: bool = True) -> dict:
                             "VM %s: rbd rm %s failed (proceeding with DB delete): %s",
                             vm_name, rbd_image, (err or out).strip(),
                         )
+                    # Also remove the shared cloud-init seed image
+                    # ({pool}/{name}-seed) created by Quick Create. Best-effort.
+                    pool = rbd_image.rsplit("/", 1)[0] if "/" in rbd_image else None
+                    if pool:
+                        seed_image = f"{pool}/{vm_name}-seed"
+                        _ssh_run(vm, f"rbd {auth_args} rm {seed_image} 2>/dev/null")
                 finally:
                     if keyring_path:
                         _ssh_run(vm, f"rm -f '{keyring_path}'")

@@ -533,6 +533,52 @@ def _build_cdrom_xml(iso_path: str) -> str:
     )
 
 
+def _build_rbd_cdrom_xml(pool: str, image: str, template_xml: str) -> str:
+    """Build a NETWORK (RBD) ``<disk device='cdrom'>`` for the cloud-init seed.
+
+    The seed therefore lives on SHARED Ceph storage (never a node's local
+    filesystem), so the VM stays fully live-migratable — a relocated domain
+    can always open its seed, and ``_is_shared_disk`` (type='network') treats
+    it as shared so migration never tries to copy local storage.
+
+    Clones the auth / mon-host entries from an existing RBD *disk* template so
+    every Ceph auth variant is handled automatically, then rewrites it into a
+    read-only cdrom on the SATA bus pointing at ``{pool}/{image}``.
+    """
+    if template_xml:
+        try:
+            root = ET.fromstring(template_xml)
+            root.set("device", "cdrom")
+            src = root.find("source")
+            if src is not None:
+                src.set("name", f"{pool}/{image}")
+            driver = root.find("driver")
+            if driver is not None:
+                driver.set("type", "raw")
+            # Drop per-volume metadata that must not carry over to the seed.
+            for tag in ("serial", "address", "boot"):
+                for el in root.findall(tag):
+                    root.remove(el)
+            tgt = root.find("target")
+            if tgt is not None:
+                tgt.set("dev", "sda")
+                tgt.set("bus", "sata")
+            if root.find("readonly") is None:
+                ET.SubElement(root, "readonly")
+            return ET.tostring(root, encoding="unicode")
+        except ET.ParseError:
+            pass
+    # Fallback: bare RBD cdrom relying on ceph.conf for auth.
+    return (
+        f"<disk type='network' device='cdrom'>"
+        f"<driver name='qemu' type='raw'/>"
+        f"<source protocol='rbd' name='{pool}/{image}'/>"
+        f"<target dev='sda' bus='sata'/>"
+        f"<readonly/>"
+        f"</disk>"
+    )
+
+
 def _build_domain_xml(name: str, vm_uuid: str, vcpus: int, ram_mb: int,
                       disk_xml: str, interface_xml: str, emulator: str,
                       cdrom_xml: str = "", iso_path: str = "") -> str:
@@ -1623,6 +1669,7 @@ def _quick_create(node: dict, name: str, vcpus: int, ram_mb: int,
     vm_uuid       = str(uuid.uuid4())
     mac           = _random_mac()
     seed_iso_path = ""
+    seed_image    = ""   # RBD image holding the cloud-init seed (shared storage)
     nvram_path    = ""
     cleanup_tmp: list[str] = []
 
@@ -1698,18 +1745,37 @@ def _quick_create(node: dict, name: str, vcpus: int, ram_mb: int,
                     "cloud-utils (RHEL) package"
                 )}
 
-            _run(client, f"mkdir -p {SEED_ISO_DIR}")
-            seed_iso_path = f"{SEED_ISO_DIR}/{name}.iso"
+            # Build the cloud-init seed ISO to a TEMP local file, then import
+            # it into the SHARED Ceph pool as "{name}-seed". The seed must NOT
+            # live on a node's local filesystem — a local seed strands the VM
+            # on one host and breaks live migration ("Cannot access storage
+            # file .../wvc-seed/<name>.iso"). On shared RBD the seed travels
+            # with the VM and every node can open it.
+            tmp_seed_iso = f"/tmp/wvc_seed_{name}.iso"
+            cleanup_tmp.append(tmp_seed_iso)
             out, err, rc = _run(
                 client,
                 f"cloud-localds --network-config={tmp_netplan} "
-                f"{seed_iso_path} {tmp_userdata} 2>&1",
+                f"{tmp_seed_iso} {tmp_userdata} 2>&1",
                 timeout=30,
             )
             if rc != 0:
                 _run(client, f"rbd {auth_args} rm {pool}/{name} 2>/dev/null")
-                _run(client, f"rm -f {seed_iso_path}")
                 return {"error": f"cloud-localds failed: {err or out}"}
+
+            seed_image = f"{name}-seed"
+            out, err, rc = _run(
+                client,
+                f"rbd {auth_args} import --image-format 2 "
+                f"{tmp_seed_iso} {pool}/{seed_image} 2>&1",
+                timeout=120,
+            )
+            if rc != 0:
+                _run(client, f"rbd {auth_args} rm {pool}/{name} 2>/dev/null")
+                _run(client, f"rbd {auth_args} rm {pool}/{seed_image} 2>/dev/null")
+                return {"error": f"rbd import (cloud-init seed) failed: {err or out}"}
+            # Truthy marker used below for boot-order; the seed now lives on RBD.
+            seed_iso_path = f"rbd:{pool}/{seed_image}"
 
         elif os_family == "windows":
             ovmf = _probe_ovmf(client)
@@ -1743,7 +1809,12 @@ def _quick_create(node: dict, name: str, vcpus: int, ram_mb: int,
                 ovmf_code=ovmf_code, nvram_path=nvram_path,
             )
         else:
-            cdrom_xml = _build_cdrom_xml(seed_iso_path)
+            # Seed lives on shared RBD ({pool}/{seed_image}); attach it as a
+            # network cdrom so the VM is fully migratable. Clone auth from the
+            # same RBD disk template the data disk uses.
+            cdrom_xml = _build_rbd_cdrom_xml(
+                pool, seed_image, resources.get("disk_xml_template", "")
+            )
             domain_xml = _build_domain_xml(
                 name=name, vm_uuid=vm_uuid, vcpus=vcpus, ram_mb=ram_mb,
                 disk_xml=disk_xml, interface_xml=iface_xml,
@@ -1762,8 +1833,8 @@ def _quick_create(node: dict, name: str, vcpus: int, ram_mb: int,
                          "(rc=%s): %s", name, node.get("hostname"), rc,
                          (err or out).strip())
             _run(client, f"rbd {auth_args} rm {pool}/{name} 2>/dev/null")
-            if seed_iso_path:
-                _run(client, f"rm -f {seed_iso_path}")
+            if seed_image:
+                _run(client, f"rbd {auth_args} rm {pool}/{seed_image} 2>/dev/null")
             if nvram_path:
                 _run(client, f"rm -f {nvram_path}")
             return {"error": f"virsh define failed: {err or out}"}
@@ -1775,8 +1846,8 @@ def _quick_create(node: dict, name: str, vcpus: int, ram_mb: int,
                          (err or out).strip())
             _run(client, f"virsh undefine '{name}' --nvram 2>/dev/null || virsh undefine '{name}' 2>/dev/null")
             _run(client, f"rbd {auth_args} rm {pool}/{name} 2>/dev/null")
-            if seed_iso_path:
-                _run(client, f"rm -f {seed_iso_path}")
+            if seed_image:
+                _run(client, f"rbd {auth_args} rm {pool}/{seed_image} 2>/dev/null")
             if nvram_path:
                 _run(client, f"rm -f {nvram_path}")
             return {"error": f"virsh start failed: {err or out}"}

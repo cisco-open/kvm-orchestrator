@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.1"
-RELEASE_NOTE = "Node agent renamed from wvc-agent to kvm-orchestrator-agent (Python package kvm_orchestrator_agent, systemd unit kvm-orchestrator-agent.service, install paths /opt|/etc/kvm-orchestrator-agent, ansible playbook install_kvm_orchestrator_agent.yml). No controller/API or metric-name changes."
+VERSION = "v0.35.2"
+RELEASE_NOTE = "Cloud-init seed on SHARED Ceph RBD. Quick Create used to write each Linux VM's cloud-init seed ISO to the node's LOCAL filesystem (/var/lib/libvirt/images/wvc-seed/<name>.iso) and attach it as a file-backed cdrom. That stranded data on one host and broke live migration ('Cannot access storage file .../wvc-seed/<name>.iso: No such file or directory') because the target node has no such file/dir. Now the seed ISO is built to a temp file, imported into the shared Ceph pool as '<name>-seed', and attached as a NETWORK (rbd) read-only cdrom — so ALL VM data lives on shared storage and the VM is always live-migratable (_is_shared_disk treats type=network as shared). Delete now also rbd-rm's the '<name>-seed' image. For EXISTING VMs that still carry a local seed, _live_migrate now detaches the spent seed cdrom (a one-time first-boot artifact) before migrating, so they migrate cleanly too. No schema or API-contract change."
