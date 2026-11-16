@@ -16,6 +16,8 @@
 
 """Authentication endpoints."""
 
+import logging
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import (
     create_access_token,
@@ -29,6 +31,10 @@ from .. import metrics
 
 bp = Blueprint("auth", __name__)
 
+logger = logging.getLogger("wvc.auth")
+
+from ..events import event  # noqa: E402
+
 
 @bp.route("/login", methods=["POST"])
 def login():
@@ -39,15 +45,21 @@ def login():
 
     if not username or not password:
         metrics.logins_total.labels(result="missing_fields").inc()
+        event("login failed for user %s (missing username or password)",
+              str(username or "-")[:64], level=logging.WARNING)
         return jsonify({"error": "Username and password required"}), 400
 
     user = auth_service.authenticate(username, password)
     if not user:
         metrics.logins_total.labels(result="invalid_credentials").inc()
+        event("login failed for user %s (invalid credentials)",
+              str(username)[:64], level=logging.WARNING)
         return jsonify({"error": "Invalid username or password"}), 401
 
     tokens = auth_service.issue_tokens(user["id"])
     metrics.logins_total.labels(result="success").inc()
+    event("%s logged in%s", user.get("username", username),
+          " (admin)" if user.get("is_admin") else "")
     return jsonify(tokens), 200
 
 

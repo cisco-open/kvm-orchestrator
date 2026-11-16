@@ -16,5 +16,5 @@
  * limitations under the License.
  */
 
-export const VERSION = "v0.35.1";
-export const RELEASE_NOTE = "Version bump only, for the node-agent rename release (wvc-agent -> kvm-orchestrator-agent). No frontend change.";
+export const VERSION = "v0.35.7";
+export const RELEASE_NOTE = "Node detail page renders the same VM table as the VMs page (shared VmTable component); UI nginx real_ip (TRUSTED_PROXIES), X-Request-ID and a compact access log.";

@@ -26,6 +26,7 @@ No agent needs to be installed on the KVM hosts — virsh is always present.
 
 import io
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -38,6 +39,7 @@ from urllib.parse import urlparse
 import paramiko
 import pymysql
 import pymysql.cursors
+import redis as redis_lib
 
 from .tenant_service import SHARED_TENANT_ID
 from ..metrics import vm_sync_iterations_total, vm_sync_duration_seconds
@@ -262,6 +264,13 @@ def _decode_libvirt_xml(b64: str) -> str | None:
 # SSH helpers (re-uses logic from node_monitor)
 # ---------------------------------------------------------------------------
 
+def _redis() -> "redis_lib.Redis":
+    return redis_lib.from_url(
+        os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        decode_responses=True,
+    )
+
+
 def _load_key(key_str: str) -> paramiko.PKey:
     for cls in (paramiko.Ed25519Key, paramiko.RSAKey,
                 paramiko.ECDSAKey, paramiko.DSSKey):
@@ -340,6 +349,36 @@ def _upsert_vms(node_id: int, vms: list[dict]) -> None:
                 raise
 
 
+def _same(old, new) -> bool:
+    if old in (None, "") and new in (None, ""):
+        return True
+    if isinstance(old, int) or isinstance(new, int):
+        try:
+            return int(old) == int(new)
+        except (TypeError, ValueError):
+            return False
+    return str(old) == str(new)
+
+
+def _row_unchanged(row: dict, vm: dict) -> bool:
+    """True if the discovered VM matches its stored row on every column the
+    upsert would write (libvirt_xml is compared separately by hash). New
+    values are normalised exactly as the INSERT normalises them."""
+    new_ip = vm.get("ip") or None
+    return (
+        _same(row["uuid"], vm.get("uuid") or None)
+        and _same(row["state"], vm.get("state", "unknown"))
+        and _same(row["vcpus"], vm.get("vcpus", 0))
+        and _same(row["ram_mb"], vm.get("ram_mb", 0))
+        and _same(row["vlan"], vm.get("vlan") or None)
+        and _same(row["disk_gb"], vm.get("disk_gb", 0))
+        and _same(row["disk_path"], vm.get("disk_path") or None)
+        and _same(row["datastore"], vm.get("datastore") or None)
+        # Upsert keeps the stored ip when the new one is empty.
+        and (new_ip is None or _same(row["ip"], new_ip))
+    )
+
+
 def _do_upsert(node_id: int, vms: list[dict]) -> None:
     conn = _get_db()
     now = datetime.utcnow()
@@ -366,6 +405,20 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
                 )
                 preserved = {r["uuid"]: r for r in cur.fetchall()}
 
+            # Current rows for this node, so unchanged VMs only get a cheap
+            # last_seen_at touch instead of a full-row upsert (which rewrote
+            # every row incl. libvirt_xml each poll and flooded the binlog).
+            cur.execute(
+                "SELECT id, name, uuid, state, vcpus, ram_mb, vlan, disk_gb, "
+                "disk_path, datastore, ip, MD5(libvirt_xml) AS xml_md5 "
+                "FROM vms WHERE node_id = %s",
+                (node_id,),
+            )
+            existing = {r["name"]: r for r in cur.fetchall()}
+            touch_running: list[int] = []
+            touch_other: list[int] = []
+            upserted_uuids: set[str] = set()
+
             for vm in vms:
                 if "error" in vm and len(vm) <= 3:
                     continue  # skip collection errors
@@ -388,7 +441,7 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
                         (name, node_id),
                     )
                     if cur.fetchone():
-                        logger.info(
+                        logger.debug(
                             "vm_sync: skipping stale '%s' on node %d — authoritative "
                             "running copy exists on another node", name, node_id)
                         continue
@@ -397,6 +450,16 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
                 # capture failed/absent → stored as NULL and the COALESCE
                 # below preserves the last good XML.
                 libvirt_xml = _decode_libvirt_xml(vm.get("libvirt_xml_b64", ""))
+                row = existing.get(name)
+                if row is not None and libvirt_xml is not None and \
+                        hashlib.md5(libvirt_xml.encode()).hexdigest() == row["xml_md5"]:
+                    libvirt_xml = None  # unchanged: COALESCE keeps the stored XML
+                if row is not None and libvirt_xml is None and _row_unchanged(row, vm):
+                    (touch_running if this_state in ("running", "paused")
+                     else touch_other).append(row["id"])
+                    continue
+                if vm.get("uuid"):
+                    upserted_uuids.add(vm["uuid"])
                 cur.execute(
                     """
                     INSERT INTO vms
@@ -448,6 +511,19 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
                     ),
                 )
 
+            for ids, running in ((touch_running, True), (touch_other, False)):
+                if not ids:
+                    continue
+                ph = ",".join(["%s"] * len(ids))
+                if running:
+                    cur.execute(
+                        f"UPDATE vms SET last_seen_at=%s, last_running_at=%s "
+                        f"WHERE id IN ({ph})", (now, now, *ids))
+                else:
+                    cur.execute(
+                        f"UPDATE vms SET last_seen_at=%s WHERE id IN ({ph})",
+                        (now, *ids))
+
             # Reap rows whose last_seen_at is older than the grace
             # threshold.
             #
@@ -484,10 +560,14 @@ def _do_upsert(node_id: int, vms: list[dict]) -> None:
                     cur.rowcount, node_id, _STALE_VM_GRACE_SECONDS,
                 )
 
-            # Re-apply the admin-metadata snapshot by uuid. Restores admin-set
-            # tenancy/owner/priority/exempt/TTL on any row that was reaped+
-            # reinserted this cycle; harmless no-op write otherwise.
+            # Re-apply the admin-metadata snapshot by uuid. If a row was
+            # reaped+reinserted this cycle (or inserted fresh while a same-uuid
+            # row existed), this restores its admin-set tenancy/owner/priority/
+            # exempt/TTL. Rows that were only touched (not upserted) can't have
+            # lost their metadata, so they're skipped.
             for v_uuid, meta in preserved.items():
+                if v_uuid not in upserted_uuids:
+                    continue
                 cur.execute(
                     "UPDATE vms SET tenant_id=%s, owner_user_id=%s, priority=%s, "
                     "exempt=%s, expires_at=%s, renewed_at=%s, lifecycle_state=%s "
@@ -565,7 +645,7 @@ def _mark_node_vms_on_unreachable(node_id: int) -> None:
                     if vm["state"] != "running":
                         cur.execute(
                             "UPDATE vms SET state='running' WHERE id=%s", (vm["id"],))
-                    logger.info(
+                    logger.debug(
                         "vm_sync: node %d unreachable but guest %s (%s) responds "
                         "— keeping 'running'", node_id, vm["name"], ip)
                 else:
@@ -581,7 +661,7 @@ def _mark_node_vms_on_unreachable(node_id: int) -> None:
 
 
 def _sync_loop() -> None:
-    logger.info("VM sync started (interval %ds)", _POLL_INTERVAL)
+    logger.debug("VM sync started (interval %ds)", _POLL_INTERVAL)
     while True:
         iteration_start = time.perf_counter()
         outcome = "ok"
@@ -606,6 +686,19 @@ def _sync_loop() -> None:
                 conn.close()
 
             for node in nodes:
+                # Single-flight per node across every process that runs this
+                # loop (each gunicorn worker, beat and worker pods). Without it
+                # ~6 copies upserted the same rows every cycle → row-lock waits
+                # (1205) and N× binlog volume. The lock is NOT released after
+                # the sync: it expires just before the next cycle so each node
+                # is synced about once per interval by whichever process gets
+                # there first. Fail open if Redis is unavailable.
+                try:
+                    if not _redis().set(f"vm_sync_lock:{node['id']}", "1",
+                                        nx=True, ex=max(_POLL_INTERVAL - 5, 10)):
+                        continue
+                except Exception:
+                    pass
                 vms = _collect_vms_from_node(node)
                 if vms is not None:
                     _upsert_vms(node["id"], vms)
@@ -632,4 +725,4 @@ def start_vm_sync() -> None:
     """Start the VM inventory sync in a background daemon thread."""
     t = threading.Thread(target=_sync_loop, daemon=True, name="vm-sync")
     t.start()
-    logger.info("VM sync thread launched")
+    logger.debug("VM sync thread launched")

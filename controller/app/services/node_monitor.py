@@ -337,6 +337,29 @@ def _poll_node(node: dict) -> dict | None:
 # DB update
 # ---------------------------------------------------------------------------
 
+def _log_transition(node_id: int, prev: dict, metrics: dict | None) -> None:
+    old = prev.get("status")
+    if old in ("fenced", "failed"):
+        return  # HA-owned states; ha_service logs those transitions
+    host = prev.get("hostname") or f"node#{node_id}"
+    if metrics:
+        new = metrics.get("status")
+        if new and old and new != old:
+            logger.info("node %s is now %s (was %s)", host, new, old)
+    elif old and old != "offline":
+        # Only claim 'offline' if the guarded UPDATE actually flipped it.
+        conn = _get_db()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT status FROM nodes WHERE id = %s", (node_id,))
+                row = cur.fetchone() or {}
+        finally:
+            conn.close()
+        if row.get("status") == "offline":
+            logger.warning("node %s is now offline (was %s, no heartbeat for >%ds)",
+                           host, old, _NODE_DOWN_THRESHOLD)
+
+
 def update_node_status(node_id: int, metrics: dict | None) -> None:
     """
     Write poll result to the nodes table.
@@ -347,6 +370,9 @@ def update_node_status(node_id: int, metrics: dict | None) -> None:
     conn = _get_db()
     try:
         with conn.cursor() as cur:
+            # v0.35.7: read the previous status so up/down transitions are logged once.
+            cur.execute("SELECT hostname, status FROM nodes WHERE id = %s", (node_id,))
+            prev = cur.fetchone() or {}
             if metrics:
                 # Always refresh heartbeat + metrics for a reachable node — even
                 # one that is 'fenced'/'failed' — so the DB reflects that the host
@@ -406,6 +432,7 @@ def update_node_status(node_id: int, metrics: dict | None) -> None:
                     (node_id, _NODE_DOWN_THRESHOLD),
                 )
         conn.commit()
+        _log_transition(node_id, prev, metrics)
     finally:
         conn.close()
 
@@ -415,7 +442,7 @@ def update_node_status(node_id: int, metrics: dict | None) -> None:
 # ---------------------------------------------------------------------------
 
 def _monitor_loop() -> None:
-    logger.info("Node monitor started (poll interval %ds)", _POLL_INTERVAL)
+    logger.debug("Node monitor started (poll interval %ds)", _POLL_INTERVAL)
     while True:
         outcome = "ok"
         try:
@@ -493,4 +520,4 @@ def start_monitor() -> None:
     """Start the SSH-poll monitor in a background daemon thread."""
     t = threading.Thread(target=_monitor_loop, daemon=True, name="node-monitor")
     t.start()
-    logger.info("Node monitor thread launched")
+    logger.debug("Node monitor thread launched")

@@ -58,3 +58,19 @@ def child_exit(server, worker):
     """Reap the exiting worker's shard files so scrapes stop aggregating them."""
     from prometheus_client import multiprocess
     multiprocess.mark_process_dead(worker.pid)
+
+
+# v0.35.7: gunicorn master/worker lines use the same human-readable format
+# as the app (app/logsetup.py). Workers re-apply it on create_app().
+_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logconfig_dict = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"wvc": {"format": "[%(asctime)s] %(levelname)-8s kvm-orchestrator :: %(message)s"}},
+    "handlers": {"stdout": {"class": "logging.StreamHandler", "formatter": "wvc", "stream": "ext://sys.stdout"}},
+    "root": {"level": _LOG_LEVEL, "handlers": ["stdout"]},
+    "loggers": {
+        "gunicorn.error": {"level": _LOG_LEVEL, "handlers": [], "propagate": True},
+        "gunicorn.access": {"level": "WARNING", "handlers": [], "propagate": True},
+    },
+}

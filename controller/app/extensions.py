@@ -50,6 +50,13 @@ def init_db(app):
 def init_celery(app):
     """Configure Celery from Flask app config."""
     celery.conf.broker_url = app.config["CELERY_BROKER_URL"]
+    # v0.35.7: keep our readable root handler instead of celery's.
+    celery.conf.worker_hijack_root_logger = False
+    from celery.signals import setup_logging
+
+    from .logsetup import configure
+
+    setup_logging.connect(lambda *a, **kw: configure(), weak=False)
     celery.conf.result_backend = app.config["CELERY_RESULT_BACKEND"]
     celery.conf.task_serializer = "json"
     celery.conf.result_serializer = "json"

@@ -50,5 +50,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "kvm-orchestrator.fullname" . }}-secrets
                   key: REDIS_URL
+            - name: TRUSTED_PROXIES
+              value: {{ .Values.config.TRUSTED_PROXIES | default "10.42.0.0/16,127.0.0.1" | quote }}
           resources:
             {{- toYaml .Values.resources.consoleProxy | nindent 12 }}

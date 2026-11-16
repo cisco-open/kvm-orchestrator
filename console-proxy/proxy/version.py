@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.1"
-RELEASE_NOTE = "Version bump only, for the node-agent rename release (wvc-agent -> kvm-orchestrator-agent). No console-proxy change."
+VERSION = "v0.35.7"
+RELEASE_NOTE = "vm_sync single-flight per node (Redis lock) + touch-only unchanged VMs (no lock waits / binlog flood); readable event logging with user, real client IP (TRUSTED_PROXIES) and request ID, nginx real_ip + X-Request-ID + clean access log, console open/close lines; MySQL binlog off by default (helm mysql.disableBinlog); node detail page uses the shared VM table."

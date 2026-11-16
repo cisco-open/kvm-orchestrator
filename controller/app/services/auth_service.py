@@ -138,7 +138,7 @@ def authenticate(username: str, password: str) -> dict | None:
     if not ldap_config_service.is_configured():
         # No directory configured — nothing else to try. (The bootstrap admin
         # is the only way in until an admin fills in LDAP via the Users tab.)
-        logger.info("LDAP not configured; rejecting non-admin login for %r", username)
+        logger.debug("LDAP not configured; rejecting non-admin login for %r", username)
         return None
 
     return _ldap_authenticate(username, password)
@@ -163,12 +163,12 @@ def _bootstrap_admin_authenticate(username: str, password: str) -> dict | None:
 
     # Constant-time compare to avoid leaking the password via timing.
     if not hmac.compare_digest(password or "", admin_pass):
-        logger.warning("Bootstrap admin login failed: bad password")
+        logger.debug("Bootstrap admin login failed: bad password")
         return None
 
     user_id = _upsert_bootstrap_admin(admin_user)
     _stash_password_hash(user_id, password)
-    logger.info("Bootstrap admin %r logged in", admin_user)
+    logger.debug("Bootstrap admin %r logged in", admin_user)
     return {"id": user_id, "username": admin_user, "is_admin": True}
 
 

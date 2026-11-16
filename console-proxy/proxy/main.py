@@ -19,7 +19,9 @@
 import asyncio
 import logging
 import os
+import ipaddress
 import signal
+import time
 
 import websockets
 
@@ -33,6 +35,48 @@ logger = logging.getLogger("console-proxy")
 LISTEN_HOST = os.environ.get("LISTEN_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8765"))
 MAX_SESSION_HOURS = int(os.environ.get("MAX_SESSION_HOURS", "8"))
+
+
+def _parse_trusted(value: str) -> tuple:
+    nets = []
+    for part in value.split(","):
+        part = part.strip()
+        if part:
+            try:
+                nets.append(ipaddress.ip_network(part, strict=False))
+            except ValueError:
+                logger.warning("TRUSTED_PROXIES: ignoring invalid entry %r", part)
+    return tuple(nets)
+
+
+# Proxies whose X-Forwarded-For entries are trusted (comma-separated CIDRs).
+# Default = k3s/RKE2 default pod CIDR + loopback; set to your cluster's pod CIDR.
+_TRUSTED = _parse_trusted(os.environ.get("TRUSTED_PROXIES", "10.42.0.0/16,127.0.0.1"))
+
+
+def _client_ip(websocket) -> str:
+    """First untrusted hop in X-Forwarded-For (right to left after the peer)."""
+    peer = websocket.remote_address[0] if websocket.remote_address else "unknown"
+    try:
+        xff = websocket.request.headers.get("X-Forwarded-For", "")
+    except Exception:
+        xff = ""
+    hops = [h.strip() for h in xff.split(",") if h.strip()] + [peer]
+    for hop in reversed(hops):
+        try:
+            addr = ipaddress.ip_address(hop)
+        except ValueError:
+            return hop
+        if not any(addr in n for n in _TRUSTED):
+            return hop
+    return hops[0]
+
+
+def _request_id(websocket) -> str:
+    try:
+        return websocket.request.headers.get("X-Request-ID", "-") or "-"
+    except Exception:
+        return "-"
 
 
 async def handler(websocket):
@@ -56,28 +100,36 @@ async def handler(websocket):
         await websocket.close(4002, "Invalid or expired token")
         return
 
-    logger.info(
-        "Console session: vm=%s type=%s user=%s",
-        token_data["vm_id"],
-        token_data["type"],
-        token_data["user_id"],
-    )
+    ip = _client_ip(websocket)
+    rid = _request_id(websocket)
+    user = token_data.get("username") or f"user#{token_data['user_id']}"
+    vm = token_data.get("vm_name") or f"#{token_data['vm_id']}"
+    kind = str(token_data["type"]).upper()
+    logger.info("%s connected to the %s console of VM %s from %s [%s]", user, kind, vm, ip, rid)
+    started = time.monotonic()
 
     # Route to appropriate bridge
-    if token_data["type"] == "vnc":
-        await handle_vnc_session(websocket, token_data)
-    elif token_data["type"] == "serial":
-        await handle_serial_session(websocket, token_data)
-    else:
-        await websocket.close(4003, "Unknown console type")
+    try:
+        if token_data["type"] == "vnc":
+            await handle_vnc_session(websocket, token_data)
+        elif token_data["type"] == "serial":
+            await handle_serial_session(websocket, token_data)
+        else:
+            await websocket.close(4003, "Unknown console type")
+    finally:
+        logger.info("%s closed the %s console of VM %s after %ds from %s [%s]",
+                    user, kind, vm, int(time.monotonic() - started), ip, rid)
 
 
 async def main():
     """Start the WebSocket server."""
+    level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO)
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        level=level,
+        format="[%(asctime)s] %(levelname)-8s kvm-orchestrator :: %(message)s",
     )
+    # Per-connection handshake chatter (and probes) only at DEBUG.
+    logging.getLogger("websockets").setLevel(max(level, logging.WARNING))
 
     stop = asyncio.get_event_loop().create_future()
 

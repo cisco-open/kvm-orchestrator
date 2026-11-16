@@ -122,7 +122,7 @@ def run_expiry_check(dry_run: bool = False) -> dict:
         _enr_conn.close()
 
     if not enabled:
-        logger.info("Lifecycle enforcement disabled (LIFECYCLE_ENABLED=false) — no-op")
+        logger.debug("Lifecycle enforcement disabled (LIFECYCLE_ENABLED=false) — no-op")
         return stats
 
     # Resolve owner username lazily per VM.
@@ -170,7 +170,7 @@ def run_expiry_check(dry_run: bool = False) -> dict:
         # deep-link. Fires once (dedup via lifecycle_state -> pending_delete).
         if now >= ops_delete_at and expired_stopped:
             if lc != "pending_delete":
-                logger.info("lifecycle: OPS-DELETE-REQUEST %s (id=%d) exp=%s%s",
+                logger.info("lifecycle engine requested ops deletion of VM %s (id=%d, expired %s)%s",
                             name, vm_id, exp, " [dry-run]" if dry_run else "")
                 if not dry_run:
                     _set_state(vm_id, "pending_delete")
@@ -182,7 +182,7 @@ def run_expiry_check(dry_run: bool = False) -> dict:
         # ---- AUTO-STOP at expiry (12 mo) ---------------------------------
         running = vm.get("state") not in ("stopped", "crashed", None)
         if now >= stop_at and not expired_stopped:
-            logger.info("lifecycle: AUTO-STOP %s (id=%d) exp=%s running=%s%s%s",
+            logger.info("lifecycle engine stopped expired VM %s (id=%d, expired %s, was running=%s)%s%s",
                         name, vm_id, exp, running,
                         " [dry-run]" if dry_run else "",
                         " [SIMULATED — non-destructive]" if not destructive else "")
@@ -210,7 +210,7 @@ def run_expiry_check(dry_run: bool = False) -> dict:
         # ---- 12.5 mo: repeat the stop warning to the owner ---------------
         if now >= poststop_warn_at and expired_stopped:
             if not _warned(vm_id, "poststop", term_start):
-                logger.info("lifecycle: POSTSTOP-WARN %s (id=%d)%s",
+                logger.info("lifecycle engine sent post-stop warning for VM %s (id=%d)%s",
                             name, vm_id, " [dry-run]" if dry_run else "")
                 if not dry_run:
                     notify.warn_owner(name, owner, stage="poststop",
@@ -224,6 +224,7 @@ def run_expiry_check(dry_run: bool = False) -> dict:
         if now >= warn2_at:
             if not _warned(vm_id, "pre2", term_start):
                 if not dry_run:
+                    logger.info("lifecycle engine warned owner %s that VM %s expires %s (stage pre2)", owner, name, exp)
                     notify.warn_owner(name, owner, stage="pre2",
                                       days_left=(exp - now).total_seconds() / 86400,
                                       expires_at=exp, tenant_id=tenant_id, vm_id=vm_id)
@@ -234,6 +235,7 @@ def run_expiry_check(dry_run: bool = False) -> dict:
         if now >= warn1_at:
             if not _warned(vm_id, "pre1", term_start):
                 if not dry_run:
+                    logger.info("lifecycle engine warned owner %s that VM %s expires %s (stage pre1)", owner, name, exp)
                     notify.warn_owner(name, owner, stage="pre1",
                                       days_left=(exp - now).total_seconds() / 86400,
                                       expires_at=exp, tenant_id=tenant_id, vm_id=vm_id)
@@ -242,7 +244,12 @@ def run_expiry_check(dry_run: bool = False) -> dict:
                 stats["warned"] += 1
             continue
 
-    logger.info("lifecycle check complete: %s", stats)
+    # v0.35.7: one summary line only when the engine actually did something.
+    if any(v for v in stats.values() if isinstance(v, (int, float))):
+        logger.info("lifecycle engine run: %s",
+                    ", ".join(f"{k}={v}" for k, v in stats.items() if v))
+    else:
+        logger.debug("lifecycle check complete: %s", stats)
     return stats
 
 

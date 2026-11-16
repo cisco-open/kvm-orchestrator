@@ -14,5 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION = "v0.35.6"
-RELEASE_NOTE = "Helm: parameterize mysql + redis StatefulSet volumeClaimTemplate accessMode (default ReadWriteMany; set ReadWriteOnce for ceph-rbd). Lets the MySQL/Redis state run on ceph-rbd (RWO block) instead of NFS (RWX) — NFS/InnoDB is fragile (lock-loss -> OS error 5/close 105 crash loops under NFS-server load)."
+VERSION = "v0.35.7"
+RELEASE_NOTE = "vm_sync single-flight per node (Redis lock) + touch-only unchanged VMs (no lock waits / binlog flood); readable event logging with user, real client IP (TRUSTED_PROXIES) and request ID, nginx real_ip + X-Request-ID + clean access log, console open/close lines; MySQL binlog off by default (helm mysql.disableBinlog); node detail page uses the shared VM table."

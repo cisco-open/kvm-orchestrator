@@ -33,11 +33,11 @@ def create_app(config_name: str | None = None) -> Flask:
     if config_name is None:
         config_name = os.environ.get("FLASK_ENV", "development")
 
-    # Route all wvc.* loggers through gunicorn's error log handler so that
-    # vm_service, node_monitor, vm_sync etc. all appear in docker logs.
+    # v0.35.7: one human-readable formatter on root; gunicorn + wvc.*
+    # propagate to it. LOG_LEVEL env (default INFO).
+    from .logsetup import configure as configure_logging
+    configure_logging()
     gunicorn_logger = logging.getLogger("gunicorn.error")
-    logging.getLogger("wvc").handlers = gunicorn_logger.handlers
-    logging.getLogger("wvc").setLevel(gunicorn_logger.level or logging.INFO)
 
     # Also capture recent wvc.* logs into an in-memory ring buffer so admins can
     # view them in the UI (Admin → Logs) without trawling `kubectl logs`.
@@ -64,6 +64,10 @@ def create_app(config_name: str | None = None) -> Flask:
     from .metrics import install as install_metrics, set_build_info
     install_metrics(app)
     set_build_info(VERSION)
+
+    # User event lines (who did what, from where, [request_id]) — v0.35.7.
+    from .events import install as install_events
+    install_events(app)
 
     # Register API blueprints
     from .api import register_blueprints

@@ -28,10 +28,12 @@ RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
-LABEL org.opencontainers.image.version="v0.35.1" \
-      org.opencontainers.image.description="frontend: runtime BRANDING toggle (kvm-orchestrator debranded default / kvm-orchestrator internal) via env.js; brand-driven name, logo, favicon, title; test-env red overlay kept independent."
+LABEL org.opencontainers.image.version="v0.35.7" \
+      org.opencontainers.image.description="vm_sync single-flight per node (Redis lock) + touch-only unchanged VMs (no lock waits / binlog flood); readable event logging with user, real client IP (TRUSTED_PROXIES) and request ID, nginx real_ip + X-Request-ID + clean access log, console open/close lines; MySQL binlog off by default (helm mysql.disableBinlog); node detail page uses the shared VM table."
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Default trusted proxies for real_ip; regenerated from TRUSTED_PROXIES at start.
+RUN printf 'set_real_ip_from 10.42.0.0/16;\nset_real_ip_from 127.0.0.1;\n' > /etc/nginx/conf.d/00-real-ip.conf
 COPY docker-entrypoint.sh /docker-entrypoint-wvc.sh
 RUN chmod +x /docker-entrypoint-wvc.sh
 EXPOSE 80

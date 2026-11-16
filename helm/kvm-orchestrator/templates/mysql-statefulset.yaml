@@ -53,6 +53,12 @@ spec:
           args:
             - --innodb-flush-method=fsync
             - --innodb-use-native-aio=OFF
+            {{- if .Values.mysql.disableBinlog | default false }}
+            # Binary logging off: single instance, no replication, recovery is
+            # from periodic mysqldumps. Left on (MySQL 8 default) binlogs can
+            # fill the volume quickly on a busy install.
+            - --disable-log-bin
+            {{- end }}
           ports:
             - containerPort: 3306
           env:

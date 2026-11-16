@@ -516,6 +516,14 @@ def vm_action(vm_id: int, action: str) -> dict:
     return {"ok": True, "vm": vm["name"], "action": action}
 
 
+def _console_username(user_id: int) -> str:
+    try:
+        from ..events import username_for
+        return username_for(user_id)
+    except Exception:
+        return "-"
+
+
 def vm_console(vm_id: int, user_id: int) -> dict:
     """
     Create a single-use console token for VNC access.
@@ -559,6 +567,9 @@ def vm_console(vm_id: int, user_id: int) -> dict:
         "vm_id":    vm_id,
         "type":     "vnc",
         "user_id":  user_id,
+        # v0.35.7: for console-proxy session open/close logging only.
+        "username": _console_username(user_id),
+        "vm_name":  vm.get("name"),
         "node_ip":  vm["ip_address"],
         "ssh_user": vm.get("ssh_user") or "root",
         "ssh_key":  vm["private_key"],
@@ -566,7 +577,7 @@ def vm_console(vm_id: int, user_id: int) -> dict:
     })
     r.setex(f"console_token:{token}", 60, token_data)
 
-    logger.info("Console token issued: vm=%s user=%s vnc_port=%d", vm["name"], user_id, vnc_port)
+    logger.debug("Console token issued: vm=%s user=%s vnc_port=%d", vm["name"], user_id, vnc_port)
     return {"token": token, "wsUrl": "/console-ws"}
 
 

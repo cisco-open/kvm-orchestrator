@@ -453,6 +453,36 @@ All durable state lives in MySQL (Redis is ephemeral — see
 against the MySQL pod, shipped to your backup store on a schedule. A reference
 Jenkins pipeline is included at `database/Jenkinsfile.backup-db`.
 
+MySQL binary logging is disabled by default (`mysql.disableBinlog: true` →
+`--disable-log-bin`): a single instance with no replication doesn't need
+binlogs, and MySQL 8's default retention can fill the volume. The trade-off is
+no point-in-time recovery — your dumps are the only recovery points, so
+schedule them as often as you can tolerate losing changes. Set
+`mysql.disableBinlog: false` if you need binlogs (replication / PITR).
+
+### Event logging and client IPs
+
+The API, worker, beat and console-proxy log one readable line per user action
+or engine event, e.g.:
+
+```
+[2026-11-16 10:41:02,113] INFO     kvm-orchestrator :: alice started VM web-01 on node-1 from 203.0.113.10 [9f1c2e4a]
+```
+
+- `LOG_LEVEL` (`config.LOG_LEVEL`, default `INFO`); polling, `/healthz`,
+  `/metrics` and periodic sync chatter are `DEBUG`. Tokens, passwords and
+  request bodies are never logged.
+- The client IP is the first untrusted hop of `X-Forwarded-For`, walked right
+  to left. Only proxies listed in `TRUSTED_PROXIES` (`config.TRUSTED_PROXIES`,
+  comma-separated CIDRs, default `10.42.0.0/16,127.0.0.1` = k3s/RKE2 default
+  pod CIDR + loopback) are skipped. **Set it to your cluster's pod CIDR** (or
+  your ingress addresses) or every request will appear to come from the
+  ingress. The same value feeds the API, the console-proxy and the UI nginx
+  (`set_real_ip_from`, generated at container start by
+  `frontend/docker-entrypoint.sh`).
+- The UI nginx propagates or mints an `X-Request-ID`, returns it to clients
+  and writes a compact access log with the user and request ID.
+
 ## Troubleshooting
 
 ### Kubernetes: pods not coming up
@@ -498,6 +528,7 @@ architecture and its troubleshooting table.
 
 | Version | Changes |
 |---|---|
+| v0.35.7 | **vm_sync single-flight + readable event logging + node page VM table** — vm_sync runs at most once per node at a time (Redis lock) and only touches `last_seen` for unchanged VMs instead of rewriting them (fixes lock-wait timeouts and binlog growth). API/worker/beat/console-proxy log one readable line per action (`kvm-orchestrator :: alice started VM web-01 on node-1 from 203.0.113.10 [rid]`), `LOG_LEVEL` env; client IP from X-Forwarded-For past `TRUSTED_PROXIES`; UI nginx `real_ip`, `X-Request-ID`, compact access log. Helm: `mysql.disableBinlog` (default true), `config.TRUSTED_PROXIES`, `config.LOG_LEVEL`. Node detail page renders the same VM table as the VMs page (shared `VmTable`) |
 | v0.35.1 | Node agent renamed `wvc-agent` → **`kvm-orchestrator-agent`** (Python package `kvm_orchestrator_agent`, systemd unit `kvm-orchestrator-agent.service`, install paths `/opt`/`/etc/kvm-orchestrator-agent`, ansible playbook `install_kvm_orchestrator_agent.yml`). No API or metric-name changes |
 | v0.35.0 | Project renamed from KVMaestro to **KVM Orchestrator** (`kvm-orchestrator`) — identity strings, brand preset/key, logo asset, Helm chart name, and all docs/comments updated. No functional change |
 | v0.34.1 | Configurable per-brand user avatars — by default the sidebar shows an initial-letter avatar and never fetches from an external host; set `Brand.directoryPhotoBase` in `branding.ts` only if you run a corporate photo directory keyed by username |
